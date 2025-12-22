@@ -1,11 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'providers/sensor_data_provider.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/bluetooth_screen.dart';
 import 'screens/settings_screen.dart';
+import 'services/notification_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Bildirim sistemini başlat
+  await NotificationService.initialize();
+  
+  // Wake Lock'u aktif et - Ekran sürekli açık kalacak
+  await WakelockPlus.enable();
+  debugPrint('✅ Wake Lock aktif - Uygulama uyku moduna geçmeyecek');
+  
   runApp(const MyApp());
 }
 
@@ -40,7 +51,7 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0;
 
   final List<Widget> _screens = [
@@ -48,6 +59,29 @@ class _MainScreenState extends State<MainScreen> {
     const BluetoothScreen(),
     const SettingsScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    debugPrint('Uygulama durumu: $state');
+    
+    if (state == AppLifecycleState.paused) {
+      debugPrint('⚠️ Uygulama arka planda - Sensör takibi devam ediyor');
+    } else if (state == AppLifecycleState.resumed) {
+      debugPrint('✅ Uygulama ön planda');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

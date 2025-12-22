@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../services/notification_service.dart';
 
 class SensorDataProvider extends ChangeNotifier {
   // Bluetooth bağlantı durumu
@@ -23,7 +24,7 @@ class SensorDataProvider extends ChangeNotifier {
   double _minHeartRate = 40;
   double _maxHeartRate = 120;
   int _inactivityTimeMinutes = 30;
-  double _fallThreshold = 2.5; // G cinsinden
+  final double _fallThreshold = 2.5; // G cinsinden - final olarak değiştirildi
   
   // Geçmiş veriler (grafik için)
   final List<HeartRateData> _heartRateHistory = [];
@@ -145,8 +146,17 @@ class SensorDataProvider extends ChangeNotifier {
   
   // Alarm tetikleme
   void _triggerAlarm(String message) {
-    // TODO: Buraya bildirim gönderme, SMS, arama vb. eklenecek
     debugPrint('🚨 ALARM: $message');
+    
+    if (message.contains('Düşme')) {
+      NotificationService.showFallAlert();
+    } else if (message.contains('Hareketsizlik')) {
+      NotificationService.showInactivityAlert(_inactivityTimeMinutes);
+    } else if (message.contains('Kalp')) {
+      NotificationService.showHeartRateAlert(_heartRate.toInt());
+    } else if (message.contains('Manuel')) {
+      NotificationService.showManualEmergency();
+    }
   }
   
   // Alarmları sıfırla

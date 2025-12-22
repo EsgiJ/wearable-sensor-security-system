@@ -1,7 +1,6 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -11,7 +10,7 @@ android {
     ndkVersion = "25.1.8937393"
 
     compileOptions {
-        isCoreLibraryDesugaringEnabled = true  // "is" prefix ekle
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
     }
@@ -22,16 +21,20 @@ android {
 
     defaultConfig {
         applicationId = "com.example.wearable_sensor_based_smart_security_system"
-        minSdk = flutter.minSdkVersion  // Sabit değer kullan
+        minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
+
+        ndk {
+            abiFilters += setOf("armeabi-v7a", "arm64-v8a", "x86_64")
+        }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")  // getByName kullan
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 }
