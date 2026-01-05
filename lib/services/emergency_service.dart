@@ -1,13 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:telephony/telephony.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:io' show Platform;
 
 class EmergencyService {
-  static final Telephony telephony = Telephony.instance;
-  
   // Bakıcı bilgilerini kaydet
   static Future<void> saveCaregiverInfo({
     required String name,
@@ -73,7 +69,7 @@ class EmergencyService {
     return 'https://www.google.com/maps?q=${position.latitude},${position.longitude}';
   }
   
-  // Acil durum SMS'i gönder
+  // Acil durum SMS'i gönder (url_launcher ile)
   static Future<bool> sendEmergencySMS({
     required String emergencyType,
     Position? location,
@@ -102,41 +98,21 @@ class EmergencyService {
       debugPrint('📱 SMS gönderiliyor: $phone');
       debugPrint('💬 Mesaj: $message');
       
-      // Platform kontrolü
-      if (Platform.isAndroid) {
-        // Android'de direkt SMS gönder
-        bool? permissionsGranted = await telephony.requestPhoneAndSmsPermissions;
-        
-        if (permissionsGranted != null && permissionsGranted) {
-          await telephony.sendSms(
-            to: phone,
-            message: message,
-          );
-          debugPrint('✅ SMS başarıyla gönderildi (Android)');
-          return true;
-        } else {
-          debugPrint('❌ SMS izni verilmedi');
-          return false;
-        }
-      } else if (Platform.isIOS) {
-        // iOS'ta SMS uygulamasını aç (direkt gönderilemez)
-        final Uri smsUri = Uri(
-          scheme: 'sms',
-          path: phone,
-          queryParameters: {'body': message},
-        );
-        
-        if (await canLaunchUrl(smsUri)) {
-          await launchUrl(smsUri);
-          debugPrint('✅ SMS uygulaması açıldı (iOS)');
-          return true;
-        } else {
-          debugPrint('❌ SMS uygulaması açılamadı');
-          return false;
-        }
-      }
+      // url_launcher ile SMS uygulamasını aç (Android ve iOS)
+      final Uri smsUri = Uri(
+        scheme: 'sms',
+        path: phone,
+        queryParameters: {'body': message},
+      );
       
-      return false;
+      if (await canLaunchUrl(smsUri)) {
+        await launchUrl(smsUri);
+        debugPrint('✅ SMS uygulaması açıldı');
+        return true;
+      } else {
+        debugPrint('❌ SMS uygulaması açılamadı');
+        return false;
+      }
       
     } catch (e) {
       debugPrint('❌ SMS gönderme hatası: $e');
@@ -221,7 +197,7 @@ class EmergencyService {
             children: [
               CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
               SizedBox(width: 16),
-              Text('SMS gönderiliyor...'),
+              Text('SMS uygulaması açılıyor...'),
             ],
           ),
           backgroundColor: Colors.orange,
@@ -249,14 +225,14 @@ class EmergencyService {
               Expanded(
                 child: Text(
                   smsSent 
-                    ? '✅ Acil durum SMS\'i gönderildi!\nBakıcı: ${caregiverInfo['name']}'
-                    : '❌ SMS gönderilemedi. Lütfen manuel olarak arayın.',
+                    ? '✅ SMS uygulaması açıldı!\nBakıcı: ${caregiverInfo['name']}\nLütfen mesajı gönderin.'
+                    : '❌ SMS uygulaması açılamadı. Lütfen manuel olarak arayın.',
                 ),
               ),
             ],
           ),
           backgroundColor: smsSent ? Colors.green : Colors.red,
-          duration: const Duration(seconds: 4),
+          duration: const Duration(seconds: 5),
           action: SnackBarAction(
             label: 'ARA',
             textColor: Colors.white,
@@ -297,10 +273,11 @@ class EmergencyService {
         SnackBar(
           content: Text(
             success 
-              ? '✅ Test mesajı gönderildi!' 
-              : '❌ Test mesajı gönderilemedi',
+              ? '✅ SMS uygulaması açıldı! Lütfen test mesajını gönderin.' 
+              : '❌ SMS uygulaması açılamadı',
           ),
           backgroundColor: success ? Colors.green : Colors.red,
+          duration: const Duration(seconds: 4),
         ),
       );
     }

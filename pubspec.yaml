@@ -32,16 +32,15 @@ dependencies:
   # Ekranı açık tutma (Wake Lock)
   wakelock_plus: ^1.2.8
   
-  # URL launcher (arama için)
+  # URL launcher (arama ve SMS için)
   url_launcher: ^6.3.1
   
-  # 🆕 SMS gönderme (Android için)
-  telephony: ^0.2.0
+  # ❌ telephony paketi kaldırıldı - url_launcher kullanıyoruz
   
-  # 🆕 Konum servisi
+  # Konum servisi
   geolocator: ^13.0.2
   
-  # 🆕 Veri saklama
+  # Veri saklama
   shared_preferences: ^2.3.5
   
   # Materyal design icons
