@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';  
 import '../providers/sensor_data_provider.dart';
+import '../services/emergency_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -17,6 +18,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _inactivityTimeController;
   late TextEditingController _caregiverNameController;
   late TextEditingController _caregiverPhoneController;
+  
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -34,6 +37,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     _caregiverNameController = TextEditingController();
     _caregiverPhoneController = TextEditingController();
+    
+    _loadCaregiverInfo();
+  }
+
+  Future<void> _loadCaregiverInfo() async {
+    final info = await EmergencyService.getCaregiverInfo();
+    setState(() {
+      _caregiverNameController.text = info['name'] ?? '';
+      _caregiverPhoneController.text = info['phone'] ?? '';
+      _isLoading = false;
+    });
   }
 
   @override
@@ -46,27 +60,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
-  void _saveSettings() {
+  Future<void> _saveSettings() async {
     if (_formKey.currentState!.validate()) {
       final provider = Provider.of<SensorDataProvider>(context, listen: false);
       
+      // Eşik değerlerini kaydet
       provider.updateThresholds(
         minHR: double.parse(_minHeartRateController.text),
         maxHR: double.parse(_maxHeartRateController.text),
         inactivityTime: int.parse(_inactivityTimeController.text),
       );
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ayarlar kaydedildi!'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      // Bakıcı bilgilerini kaydet
+      if (_caregiverNameController.text.isNotEmpty && 
+          _caregiverPhoneController.text.isNotEmpty) {
+        await EmergencyService.saveCaregiverInfo(
+          name: _caregiverNameController.text,
+          phone: _caregiverPhoneController.text,
+        );
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Ayarlar kaydedildi!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Ayarlar'),
@@ -160,20 +194,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 24),
               
-              // Bakıcı Bilgileri
-              _buildSectionTitle('Bakıcı/Acil Durum İletişim'),
+              // 🆕 Bakıcı Bilgileri - Güncellenmiş
+              _buildSectionTitle('🚨 Acil Durum İletişim'),
               Card(
+                color: Colors.red[50],
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.warning, color: Colors.red),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Acil durumlarda SMS ve konum bilgisi gönderilecek kişi',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
                       TextFormField(
                         controller: _caregiverNameController,
                         decoration: const InputDecoration(
-                          labelText: 'Bakıcı Adı',
+                          labelText: 'Bakıcı / Yakın Adı',
                           prefixIcon: Icon(Icons.person),
                           border: OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Colors.white,
                         ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Lütfen isim girin';
+                          }
+                          return null;
+                        },
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
@@ -183,16 +243,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           labelText: 'Telefon Numarası',
                           prefixIcon: Icon(Icons.phone),
                           border: OutlineInputBorder(),
-                          helperText: 'Acil durumlarda aranacak numara',
+                          helperText: 'Acil durumlarda SMS gönderilecek numara',
+                          filled: true,
+                          fillColor: Colors.white,
                         ),
                         validator: (value) {
-                          if (value != null && value.isNotEmpty) {
-                            if (value.length < 10) {
-                              return 'Geçerli bir telefon numarası girin';
-                            }
+                          if (value == null || value.isEmpty) {
+                            return 'Lütfen telefon numarası girin';
+                          }
+                          if (value.length < 10) {
+                            return 'Geçerli bir telefon numarası girin';
                           }
                           return null;
                         },
+                      ),
+                      const SizedBox(height: 16),
+                      // Test Butonu
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            if (_caregiverPhoneController.text.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('⚠️ Lütfen önce telefon numarasını kaydedin'),
+                                  backgroundColor: Colors.orange,
+                                ),
+                              );
+                              return;
+                            }
+                            
+                            // Önce kaydet
+                            await EmergencyService.saveCaregiverInfo(
+                              name: _caregiverNameController.text,
+                              phone: _caregiverPhoneController.text,
+                            );
+                            
+                            // Sonra test et
+                            if (mounted) {
+                              await EmergencyService.testCaregiverContact(context);
+                            }
+                          },
+                          icon: const Icon(Icons.send),
+                          label: const Text('Test SMS Gönder'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.blue,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '💡 Test SMS\'i konum bilgisi ile birlikte gönderilecektir',
+                        style: TextStyle(fontSize: 11, color: Colors.grey),
                       ),
                     ],
                   ),
@@ -256,7 +358,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 16),
               
-              // Test Butonu (Geliştirme amaçlı)
+              // Test Modu Butonu (Geliştirme amaçlı)
               SizedBox(
                 width: double.infinity,
                 height: 50,

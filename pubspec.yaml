@@ -23,17 +23,26 @@ dependencies:
   # State management
   provider: ^6.1.1
   
-  # 🆕 Bildirimler - ŞİMDİ AKTİF!
+  # Bildirimler
   flutter_local_notifications: ^18.0.1
   
-  # 🆕 Ses çalma
+  # Ses çalma
   audioplayers: ^6.1.0
   
-  # 🆕 Ekranı açık tutma (Wake Lock)
+  # Ekranı açık tutma (Wake Lock)
   wakelock_plus: ^1.2.8
   
-  # 🆕 URL launcher (arama için)
+  # URL launcher (arama için)
   url_launcher: ^6.3.1
+  
+  # 🆕 SMS gönderme (Android için)
+  telephony: ^0.2.0
+  
+  # 🆕 Konum servisi
+  geolocator: ^13.0.2
+  
+  # 🆕 Veri saklama
+  shared_preferences: ^2.3.5
   
   # Materyal design icons
   cupertino_icons: ^1.0.2
@@ -47,7 +56,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  # 🆕 Ses dosyaları
+  # Ses dosyaları
   assets:
     - assets/sounds/alarm.mp3
     - assets/sounds/alert.mp3

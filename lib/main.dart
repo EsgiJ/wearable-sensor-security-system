@@ -64,6 +64,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    
+    // 🆕 Provider'a context'i ver (emergency service için gerekli)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = Provider.of<SensorDataProvider>(context, listen: false);
+      provider.setContext(context);
+    });
   }
 
   @override

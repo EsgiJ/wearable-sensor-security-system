@@ -1,7 +1,16 @@
 import 'package:flutter/foundation.dart';
 import '../services/notification_service.dart';
+import '../services/emergency_service.dart';
+import 'package:flutter/material.dart';
 
 class SensorDataProvider extends ChangeNotifier {
+  // BuildContext'i tutmak için (emergency service için gerekli)
+  BuildContext? _context;
+  
+  void setContext(BuildContext context) {
+    _context = context;
+  }
+  
   // Bluetooth bağlantı durumu
   bool _isConnected = false;
   String _deviceName = '';
@@ -96,7 +105,7 @@ class SensorDataProvider extends ChangeNotifier {
     
     if (totalAcceleration > _fallThreshold) {
       _fallDetected = true;
-      _triggerAlarm('Düşme tespit edildi!');
+      _triggerAlarm('Düşme tespit edildi!', 'DÜŞME TESPİT EDİLDİ');
     }
   }
   
@@ -123,7 +132,10 @@ class SensorDataProvider extends ChangeNotifier {
     
     if (minutesSinceLastMovement >= _inactivityTimeMinutes) {
       _inactivityAlarm = true;
-      _triggerAlarm('Uzun süreli hareketsizlik tespit edildi!');
+      _triggerAlarm(
+        'Uzun süreli hareketsizlik tespit edildi!', 
+        'UZUN SÜRELİ HAREKETSİZLİK ($_inactivityTimeMinutes dakika)'
+      );
     }
   }
   
@@ -131,7 +143,10 @@ class SensorDataProvider extends ChangeNotifier {
   void _checkHeartRateAlarm() {
     if (_heartRate < _minHeartRate || _heartRate > _maxHeartRate) {
       _heartRateAlarm = true;
-      _triggerAlarm('Anormal kalp atışı: ${_heartRate.toInt()} bpm');
+      _triggerAlarm(
+        'Anormal kalp atışı: ${_heartRate.toInt()} bpm',
+        'ANORMAL KALP ATIŞI (${_heartRate.toInt()} bpm)'
+      );
     } else {
       _heartRateAlarm = false;
     }
@@ -140,14 +155,15 @@ class SensorDataProvider extends ChangeNotifier {
   // Manuel alarm
   void triggerManualAlarm() {
     _manualAlarm = true;
-    _triggerAlarm('Manuel acil durum çağrısı!');
+    _triggerAlarm('Manuel acil durum çağrısı!', 'MANUEL ACİL DURUM');
     notifyListeners();
   }
   
-  // Alarm tetikleme
-  void _triggerAlarm(String message) {
+  // 🆕 Alarm tetikleme - Emergency Service ile entegre
+  void _triggerAlarm(String message, String emergencyType) {
     debugPrint('🚨 ALARM: $message');
     
+    // Bildirim göster
     if (message.contains('Düşme')) {
       NotificationService.showFallAlert();
     } else if (message.contains('Hareketsizlik')) {
@@ -156,6 +172,14 @@ class SensorDataProvider extends ChangeNotifier {
       NotificationService.showHeartRateAlert(_heartRate.toInt());
     } else if (message.contains('Manuel')) {
       NotificationService.showManualEmergency();
+    }
+    
+    // 🆕 Acil durum SMS'i ve konum gönder
+    if (_context != null) {
+      EmergencyService.triggerEmergency(
+        emergencyType: emergencyType,
+        context: _context!,
+      );
     }
   }
   
