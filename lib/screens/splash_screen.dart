@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'dart:async';
+import '../services/localization_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -110,13 +112,15 @@ class _SplashScreenState extends State<SplashScreen>
                 // Başlık
                 FadeTransition(
                   opacity: _fadeAnimation,
-                  child: const Text(
-                    'Akıllı Güvenlik',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      letterSpacing: 2,
+                  child: Consumer<LocalizationService>(
+                    builder: (context, loc, child) => Text(
+                      loc.t('app_title'),
+                      style: const TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        letterSpacing: 2,
+                      ),
                     ),
                   ),
                 ),
@@ -126,12 +130,14 @@ class _SplashScreenState extends State<SplashScreen>
                 // Alt Başlık
                 FadeTransition(
                   opacity: _fadeAnimation,
-                  child: const Text(
-                    'Giyilebilir Sensör Sistemi',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white70,
-                      letterSpacing: 1,
+                  child: Consumer<LocalizationService>(
+                    builder: (context, loc, child) => Text(
+                      loc.t('app_subtitle'),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: Colors.white70,
+                        letterSpacing: 1,
+                      ),
                     ),
                   ),
                 ),
@@ -154,11 +160,13 @@ class _SplashScreenState extends State<SplashScreen>
                         ),
                       ),
                       const SizedBox(height: 16),
-                      const Text(
-                        'Sistem başlatılıyor...',
-                        style: TextStyle(
-                          color: Colors.white60,
-                          fontSize: 14,
+                      Consumer<LocalizationService>(
+                        builder: (context, loc, child) => Text(
+                          loc.t('system_starting'),
+                          style: const TextStyle(
+                            color: Colors.white60,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
                     ],

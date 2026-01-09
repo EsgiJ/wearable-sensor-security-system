@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'dart:async';  
 import '../providers/sensor_data_provider.dart';
 import '../services/emergency_service.dart';
+import '../services/localization_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -69,7 +70,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     super.dispose();
   }
 
-  void _saveSettings() async {
+  void _saveSettings(LocalizationService loc) async {
     if (_formKey.currentState!.validate()) {
       final provider = Provider.of<SensorDataProvider>(context, listen: false);
       
@@ -79,7 +80,6 @@ class _SettingsScreenState extends State<SettingsScreen>
         inactivityTime: int.parse(_inactivityTimeController.text),
       );
       
-      // Bakıcı bilgilerini kaydet
       await EmergencyService.saveCaregiverInfo(
         name: _caregiverNameController.text.trim(),
         phone: _caregiverPhoneController.text.trim(),
@@ -92,11 +92,11 @@ class _SettingsScreenState extends State<SettingsScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Row(
+            content: Row(
               children: [
-                Icon(Icons.check_circle, color: Colors.white),
-                SizedBox(width: 12),
-                Text('Ayarlar başarıyla kaydedildi!'),
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 12),
+                Text(loc.t('settings_saved_success')),
               ],
             ),
             backgroundColor: Colors.green,
@@ -110,9 +110,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
-  Future<void> _testSMS() async {
+  Future<void> _testSMS(LocalizationService loc) async {
     if (_caregiverPhoneController.text.trim().isEmpty) {
-      _showSnackBar('Önce telefon numarası girin', Colors.orange);
+      _showSnackBar(loc.t('first_enter_phone'), Colors.orange);
       return;
     }
 
@@ -122,11 +122,11 @@ class _SettingsScreenState extends State<SettingsScreen>
       await EmergencyService.testCaregiverContact(context);
 
       if (mounted) {
-        _showSnackBar('Test SMS gönderildi!', Colors.green);
+        _showSnackBar(loc.t('test_sms_sent'), Colors.green);
       }
     } catch (e) {
       if (mounted) {
-        _showSnackBar('Hata: $e', Colors.red);
+        _showSnackBar('${loc.t('error')}: $e', Colors.red);
       }
     } finally {
       if (mounted) {
@@ -159,23 +159,25 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final loc = Provider.of<LocalizationService>(context);
+    
     return Scaffold(
       backgroundColor: Colors.grey[50],
       body: CustomScrollView(
         slivers: [
-          _buildSliverAppBar(),
+          _buildSliverAppBar(loc),
           SliverToBoxAdapter(
             child: Form(
               key: _formKey,
               child: Column(
                 children: [
                   const SizedBox(height: 16),
-                  _buildHeartRateSection(),
-                  _buildInactivitySection(),
-                  _buildCaregiverSection(),
-                  _buildNotificationSection(),
-                  _buildTestSection(),
-                  _buildSaveButton(),
+                  _buildHeartRateSection(loc),
+                  _buildInactivitySection(loc),
+                  _buildCaregiverSection(loc),
+                  _buildNotificationSection(loc),
+                  _buildTestSection(loc),
+                  _buildSaveButton(loc),
                   const SizedBox(height: 24),
                 ],
               ),
@@ -186,7 +188,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  Widget _buildSliverAppBar() {
+  Widget _buildSliverAppBar(LocalizationService loc) {
     return SliverAppBar(
       expandedHeight: 120,
       floating: false,
@@ -194,9 +196,9 @@ class _SettingsScreenState extends State<SettingsScreen>
       elevation: 0,
       backgroundColor: Colors.blue,
       flexibleSpace: FlexibleSpaceBar(
-        title: const Text(
-          'Ayarlar',
-          style: TextStyle(
+        title: Text(
+          loc.t('settings'),
+          style: const TextStyle(
             fontWeight: FontWeight.bold,
             color: Colors.white,
           ),
@@ -231,21 +233,21 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ),
                   ),
                   const SizedBox(width: 16),
-                  const Column(
+                  Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        'Sistem Ayarları',
-                        style: TextStyle(
+                        loc.t('system_settings'),
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       Text(
-                        'Tercihleri özelleştirin',
-                        style: TextStyle(
+                        loc.t('customize_preferences'),
+                        style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 13,
                         ),
@@ -261,49 +263,51 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  Widget _buildHeartRateSection() {
+  Widget _buildHeartRateSection(LocalizationService loc) {
     return _buildSection(
-      title: 'Kalp Atışı Eşikleri',
+      title: loc.t('heart_rate_thresholds'),
       icon: Icons.favorite_rounded,
       iconColor: Colors.red,
       child: Column(
         children: [
           _buildTextField(
+            loc: loc,
             controller: _minHeartRateController,
-            label: 'Minimum Nabız (bpm)',
+            label: loc.t('minimum_heart_rate'),
             icon: Icons.arrow_downward,
             keyboardType: TextInputType.number,
             validator: (value) {
               if (value == null || value.isEmpty) {
-                return 'Lütfen bir değer girin';
+                return loc.t('please_enter_value');
               }
               final number = int.tryParse(value);
               if (number == null || number < 30 || number > 100) {
-                return '30-100 arası bir değer girin';
+                return '${loc.t('enter_value_between')} 30-100';
               }
               return null;
             },
           ),
           const SizedBox(height: 16),
           _buildTextField(
+            loc: loc,
             controller: _maxHeartRateController,
-            label: 'Maximum Nabız (bpm)',
+            label: loc.t('maximum_heart_rate'),
             icon: Icons.arrow_upward,
             keyboardType: TextInputType.number,
             validator: (value) {
               if (value == null || value.isEmpty) {
-                return 'Lütfen bir değer girin';
+                return loc.t('please_enter_value');
               }
               final number = int.tryParse(value);
               if (number == null || number < 100 || number > 200) {
-                return '100-200 arası bir değer girin';
+                return '${loc.t('enter_value_between')} 100-200';
               }
               return null;
             },
           ),
           const SizedBox(height: 12),
           _buildInfoBox(
-            'Normal kalp atışı yaşa ve fiziksel aktiviteye göre değişir. Kişisel değerlerinizi belirlemek için doktorunuza danışın.',
+            loc.t('hr_normal_info'),
             Colors.blue,
           ),
         ],
@@ -311,26 +315,27 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  Widget _buildInactivitySection() {
+  Widget _buildInactivitySection(LocalizationService loc) {
     return _buildSection(
-      title: 'Hareketsizlik Tespiti',
+      title: loc.t('inactivity_detection'),
       icon: Icons.timer_rounded,
       iconColor: Colors.orange,
       child: Column(
         children: [
           _buildTextField(
+            loc: loc,
             controller: _inactivityTimeController,
-            label: 'Hareketsizlik Süresi (dakika)',
+            label: loc.t('inactivity_timeout'),
             icon: Icons.schedule,
             keyboardType: TextInputType.number,
-            helperText: 'Bu süre boyunca hareket yoksa alarm verilir',
+            helperText: loc.t('inactivity_timeout_help'),
             validator: (value) {
               if (value == null || value.isEmpty) {
-                return 'Lütfen bir değer girin';
+                return loc.t('please_enter_value');
               }
               final number = int.tryParse(value);
               if (number == null || number < 5 || number > 120) {
-                return '5-120 arası bir değer girin';
+                return '${loc.t('enter_value_between')} 5-120';
               }
               return null;
             },
@@ -340,41 +345,44 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  Widget _buildCaregiverSection() {
+  Widget _buildCaregiverSection(LocalizationService loc) {
     return _buildSection(
-      title: 'Acil Durum İletişim',
+      title: loc.t('emergency_contact'),
       icon: Icons.contact_phone_rounded,
       iconColor: Colors.red,
       urgent: true,
+      urgentLabel: loc.t('important'),
       child: Column(
         children: [
           _buildTextField(
+            loc: loc,
             controller: _caregiverNameController,
-            label: 'Bakıcı / Yakın Adı',
+            label: loc.t('caregiver_name'),
             icon: Icons.person,
             keyboardType: TextInputType.name,
           ),
           const SizedBox(height: 16),
           _buildTextField(
+            loc: loc,
             controller: _caregiverPhoneController,
-            label: 'Telefon Numarası',
+            label: loc.t('phone_number'),
             icon: Icons.phone,
             keyboardType: TextInputType.phone,
-            helperText: 'Acil durumlarda aranacak numara',
+            helperText: loc.t('phone_help'),
             validator: (value) {
               if (value != null && value.isNotEmpty) {
                 if (value.length < 10) {
-                  return 'Geçerli bir telefon numarası girin';
+                  return loc.t('enter_valid_phone');
                 }
               }
               return null;
             },
           ),
           const SizedBox(height: 16),
-          _buildTestSMSButton(),
+          _buildTestSMSButton(loc),
           const SizedBox(height: 12),
           _buildInfoBox(
-            '⚠️ Acil durum alarmları otomatik olarak bu numaraya SMS gönderecektir. Lütfen güncel bir numara girin.',
+            loc.t('emergency_warning'),
             Colors.red,
           ),
         ],
@@ -382,34 +390,38 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  Widget _buildNotificationSection() {
+  Widget _buildNotificationSection(LocalizationService loc) {
     return _buildSection(
-      title: 'Bildirim Tercihleri',
+      title: loc.t('notification_settings'),
       icon: Icons.notifications_rounded,
       iconColor: Colors.purple,
       child: Column(
         children: [
           _buildSwitchTile(
-            title: 'Düşme Bildirimleri',
-            subtitle: 'Düşme tespit edildiğinde bildir',
+            loc: loc,
+            title: loc.t('fall_notifications'),
+            subtitle: loc.t('fall_notif_desc'),
             value: true,
             icon: Icons.warning_rounded,
           ),
           _buildSwitchTile(
-            title: 'Hareketsizlik Bildirimleri',
-            subtitle: 'Uzun süre hareketsizlik tespit edildiğinde bildir',
+            loc: loc,
+            title: loc.t('inactivity_notifications'),
+            subtitle: loc.t('inactivity_notif_desc'),
             value: true,
             icon: Icons.timer_off_rounded,
           ),
           _buildSwitchTile(
-            title: 'Kalp Atışı Bildirimleri',
-            subtitle: 'Anormal nabız tespit edildiğinde bildir',
+            loc: loc,
+            title: loc.t('heart_rate_notifications'),
+            subtitle: loc.t('hr_notif_desc'),
             value: true,
             icon: Icons.favorite_rounded,
           ),
           _buildSwitchTile(
-            title: 'Sesli Uyarılar',
-            subtitle: 'Alarm durumlarında ses çal',
+            loc: loc,
+            title: loc.t('audio_alerts'),
+            subtitle: loc.t('audio_alerts_desc'),
             value: true,
             icon: Icons.volume_up_rounded,
           ),
@@ -418,24 +430,24 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  Widget _buildTestSection() {
+  Widget _buildTestSection(LocalizationService loc) {
     return _buildSection(
-      title: 'Test Modu',
+      title: loc.t('test_mode'),
       icon: Icons.science_rounded,
       iconColor: Colors.teal,
       child: Column(
         children: [
           _buildInfoBox(
-            'Test modu rastgele sensör verisi üretir. Sistemi gerçek bir cihaz olmadan test etmek için kullanın.',
+            loc.t('test_mode_info'),
             Colors.teal,
           ),
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: _startTestMode,
+              onPressed: () => _startTestMode(loc),
               icon: const Icon(Icons.bug_report_rounded),
-              label: const Text('Test Modu Başlat'),
+              label: Text(loc.t('start_test_mode')),
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.teal,
                 side: const BorderSide(color: Colors.teal, width: 2),
@@ -457,6 +469,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     required Color iconColor,
     required Widget child,
     bool urgent = false,
+    String? urgentLabel,
   }) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -497,16 +510,16 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ),
                   ),
                 ),
-                if (urgent)
+                if (urgent && urgentLabel != null)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: iconColor,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Text(
-                      'ÖNEMLİ',
-                      style: TextStyle(
+                    child: Text(
+                      urgentLabel,
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
@@ -526,6 +539,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Widget _buildTextField({
+    required LocalizationService loc,
     required TextEditingController controller,
     required String label,
     required IconData icon,
@@ -559,6 +573,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Widget _buildSwitchTile({
+    required LocalizationService loc,
     required String title,
     required String subtitle,
     required bool value,
@@ -627,11 +642,11 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  Widget _buildTestSMSButton() {
+  Widget _buildTestSMSButton(LocalizationService loc) {
     return SizedBox(
       width: double.infinity,
       child: OutlinedButton.icon(
-        onPressed: _isTestingSMS ? null : _testSMS,
+        onPressed: _isTestingSMS ? null : () => _testSMS(loc),
         icon: _isTestingSMS
             ? const SizedBox(
                 width: 16,
@@ -639,7 +654,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             : const Icon(Icons.send),
-        label: Text(_isTestingSMS ? 'Gönderiliyor...' : 'Test SMS Gönder'),
+        label: Text(_isTestingSMS ? loc.t('sending') : loc.t('test_sms_send')),
         style: OutlinedButton.styleFrom(
           foregroundColor: Colors.green,
           side: const BorderSide(color: Colors.green, width: 1.5),
@@ -652,7 +667,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  Widget _buildSaveButton() {
+  Widget _buildSaveButton(LocalizationService loc) {
     return Container(
       margin: const EdgeInsets.all(16),
       child: AnimatedBuilder(
@@ -664,11 +679,11 @@ class _SettingsScreenState extends State<SettingsScreen>
               width: double.infinity,
               height: 56,
               child: ElevatedButton.icon(
-                onPressed: _saveSettings,
+                onPressed: () => _saveSettings(loc),
                 icon: const Icon(Icons.save_rounded, size: 24),
-                label: const Text(
-                  'Ayarları Kaydet',
-                  style: TextStyle(
+                label: Text(
+                  loc.t('save_settings'),
+                  style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
@@ -690,23 +705,23 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  void _startTestMode() {
+  void _startTestMode(LocalizationService loc) {
     final provider = Provider.of<SensorDataProvider>(context, listen: false);
     
     Future.delayed(Duration.zero, () {
-      _generateTestData(provider);
+      _generateTestData(provider, loc);
     });
     
-    _showSnackBar('Test modu başlatıldı! Rastgele veri üretiliyor...', Colors.orange);
+    _showSnackBar(loc.t('test_mode_started'), Colors.orange);
   }
 
-  void _generateTestData(SensorDataProvider provider) {
+  void _generateTestData(SensorDataProvider provider, LocalizationService loc) {
     int count = 0;
     Timer.periodic(const Duration(seconds: 2), (timer) {
       if (!mounted || count >= 10) {
         timer.cancel();
         if (mounted) {
-          _showSnackBar('Test modu tamamlandı', Colors.teal);
+          _showSnackBar(loc.t('test_mode_completed'), Colors.teal);
         }
         return;
       }

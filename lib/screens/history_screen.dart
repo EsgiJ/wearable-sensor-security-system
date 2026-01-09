@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
+import '../providers/sensor_data_provider.dart';
+import '../services/localization_service.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -8,532 +12,295 @@ class HistoryScreen extends StatefulWidget {
   State<HistoryScreen> createState() => _HistoryScreenState();
 }
 
-class _HistoryScreenState extends State<HistoryScreen> 
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  String _selectedPeriod = 'Bugün';
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
+class _HistoryScreenState extends State<HistoryScreen> {
+  String _selectedPeriod = 'today';
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      body: CustomScrollView(
-        slivers: [
-          _buildSliverAppBar(),
-          SliverToBoxAdapter(
-            child: Column(
-              children: [
-                const SizedBox(height: 16),
-                _buildPeriodSelector(),
-                _buildStatsCards(),
-                _buildChartSection(),
-                _buildEventsList(),
-                const SizedBox(height: 24),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSliverAppBar() {
-    return SliverAppBar(
-      expandedHeight: 120,
-      floating: false,
-      pinned: true,
-      elevation: 0,
-      backgroundColor: Colors.purple,
-      flexibleSpace: FlexibleSpaceBar(
-        title: const Text(
-          'Geçmiş Veriler',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        background: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.purple,
-                Colors.purple.shade700,
-                Colors.purple.shade900,
-              ],
-            ),
-          ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 56),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.history,
-                      color: Colors.white,
-                      size: 32,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Sağlık Geçmişi',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        'Detaylı analiz ve raporlar',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPeriodSelector() {
-    final periods = ['Bugün', 'Bu Hafta', 'Bu Ay', 'Tümü'];
+    final provider = Provider.of<SensorDataProvider>(context);
+    final loc = Provider.of<LocalizationService>(context);
     
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+    // Seçili periyoda göre filtrele
+    final filteredRecords = _filterRecords(provider.sensorRecords);
+    final filteredAlarms = _filterAlarms(provider.alarmRecords);
+    
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(loc.t('history')),
+        actions: [
+          // Temizle butonu
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () => _showClearDialog(context, provider, loc),
           ),
         ],
       ),
-      child: Row(
-        children: periods.map((period) {
-          final isSelected = _selectedPeriod == period;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () {
-                setState(() {
-                  _selectedPeriod = period;
-                });
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  color: isSelected ? Colors.purple : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  period,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                    color: isSelected ? Colors.white : Colors.grey[600],
-                  ),
-                ),
-              ),
-            ),
-          );
-        }).toList(),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Periyot seçici
+            _buildPeriodSelector(loc),
+            const SizedBox(height: 16),
+            
+            // İstatistik kartları
+            _buildStatsCards(filteredRecords, loc),
+            const SizedBox(height: 16),
+            
+            // Kalp atışı grafiği
+            if (filteredRecords.isNotEmpty) ...[
+              _buildSectionTitle(loc.t('Heart Rate Chart'), loc),
+              _buildHeartRateChart(filteredRecords),
+              const SizedBox(height: 24),
+            ],
+            
+            // Alarm listesi
+            _buildSectionTitle(loc.t('alarm_history'), loc),
+            if (filteredAlarms.isEmpty)
+              _buildEmptyState(loc.t('no_alarms'))
+            else
+              ...filteredAlarms.map((alarm) => _buildAlarmCard(alarm, loc)),
+          ],
+        ),
       ),
     );
   }
-
-  Widget _buildStatsCards() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildStatCard(
-              icon: Icons.favorite,
-              label: 'Ortalama Nabız',
-              value: '72',
-              unit: 'bpm',
-              color: Colors.red,
-              trend: '+2.3%',
-              trendUp: true,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _buildStatCard(
-              icon: Icons.directions_walk,
-              label: 'Aktif Süre',
-              value: '4.2',
-              unit: 'saat',
-              color: Colors.green,
-              trend: '+8.1%',
-              trendUp: true,
-            ),
-          ),
-        ],
+  
+  Widget _buildPeriodSelector(LocalizationService loc) {
+    return Row(
+      children: [
+        Expanded(
+          child: _periodButton('today', loc.t('today'), loc),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _periodButton('week', loc.t('this_week'), loc),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _periodButton('all', loc.t('all_time'), loc),
+        ),
+      ],
+    );
+  }
+  
+  Widget _periodButton(String value, String label, LocalizationService loc) {
+    final isSelected = _selectedPeriod == value;
+    return ElevatedButton(
+      onPressed: () => setState(() => _selectedPeriod = value),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: isSelected ? Colors.blue : Colors.grey[200],
+        foregroundColor: isSelected ? Colors.white : Colors.black,
+      ),
+      child: Text(label),
+    );
+  }
+  
+  Widget _buildStatsCards(List records, LocalizationService loc) {
+    if (records.isEmpty) {
+      return _buildEmptyState(loc.t('no_data'));
+    }
+    
+    // İstatistikleri hesapla
+    final heartRates = records.map((r) => r.heartRate).toList();
+    final avgHeartRate = heartRates.reduce((a, b) => a + b) / heartRates.length;
+    final maxHeartRate = heartRates.reduce((a, b) => a > b ? a : b);
+    final minHeartRate = heartRates.reduce((a, b) => a < b ? a : b);
+    
+    return Row(
+      children: [
+        Expanded(child: _buildStatCard('📊 ${loc.t('average')}', 
+          '${avgHeartRate.toInt()} bpm', Colors.blue)),
+        const SizedBox(width: 8),
+        Expanded(child: _buildStatCard('📈 ${loc.t('maximum')}', 
+          '${maxHeartRate.toInt()} bpm', Colors.red)),
+        const SizedBox(width: 8),
+        Expanded(child: _buildStatCard('📉 ${loc.t('minimum')}', 
+          '${minHeartRate.toInt()} bpm', Colors.green)),
+      ],
+    );
+  }
+  
+  Widget _buildStatCard(String title, String value, Color color) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Text(title, style: const TextStyle(fontSize: 12)),
+            const SizedBox(height: 8),
+            Text(value, 
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
+          ],
+        ),
       ),
     );
   }
-
-  Widget _buildStatCard({
-    required IconData icon,
-    required String label,
-    required String value,
-    required String unit,
-    required Color color,
-    required String trend,
-    required bool trendUp,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Icon(icon, color: color, size: 24),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: (trendUp ? Colors.green : Colors.red).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      trendUp ? Icons.arrow_upward : Icons.arrow_downward,
-                      size: 12,
-                      color: trendUp ? Colors.green : Colors.red,
+  
+  Widget _buildHeartRateChart(List records) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: SizedBox(
+          height: 200,
+          child: LineChart(
+            LineChartData(
+              gridData: const FlGridData(show: true),
+              titlesData: FlTitlesData(
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 40,
+                    getTitlesWidget: (value, meta) => Text(
+                      value.toInt().toString(),
+                      style: const TextStyle(fontSize: 10),
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      trend,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: trendUp ? Colors.green : Colors.red,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[600],
-            ),
-          ),
-          const SizedBox(height: 4),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                unit,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildChartSection() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Haftalık Trend',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.purple.shade50,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: TabBar(
-                  controller: _tabController,
-                  isScrollable: true,
-                  indicator: BoxDecoration(
-                    color: Colors.purple,
-                    borderRadius: BorderRadius.circular(20),
                   ),
-                  labelColor: Colors.white,
-                  unselectedLabelColor: Colors.purple,
-                  labelStyle: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  tabs: const [
-                    Tab(text: 'Nabız'),
-                    Tab(text: 'Aktivite'),
-                    Tab(text: 'Uyku'),
-                  ],
+                ),
+                bottomTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                topTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                rightTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            height: 200,
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildBarChart(Colors.red),
-                _buildBarChart(Colors.green),
-                _buildBarChart(Colors.blue),
+              borderData: FlBorderData(show: true),
+              lineBarsData: [
+                LineChartBarData(
+                  spots: records.asMap().entries.map((e) => 
+                    FlSpot(e.key.toDouble(), e.value.heartRate)).toList(),
+                  isCurved: true,
+                  color: Colors.red,
+                  barWidth: 2,
+                  dotData: const FlDotData(show: false),
+                ),
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBarChart(Color color) {
-    return BarChart(
-      BarChartData(
-        alignment: BarChartAlignment.spaceAround,
-        maxY: 100,
-        barTouchData: BarTouchData(enabled: false),
-        titlesData: FlTitlesData(
-          show: true,
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (value, meta) {
-                const days = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
-                return Text(
-                  days[value.toInt() % 7],
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                );
-              },
-            ),
-          ),
-          leftTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          topTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          rightTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
         ),
-        gridData: const FlGridData(show: false),
-        borderData: FlBorderData(show: false),
-        barGroups: List.generate(7, (index) {
-          return BarChartGroupData(
-            x: index,
-            barRods: [
-              BarChartRodData(
-                toY: 50 + (index * 7) % 40,
-                color: color,
-                width: 16,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(4),
-                ),
-              ),
-            ],
-          );
-        }),
       ),
     );
   }
-
-  Widget _buildEventsList() {
-    final events = [
-      {
-        'icon': Icons.warning_rounded,
-        'title': 'Düşük Kalp Atışı',
-        'subtitle': '38 bpm tespit edildi',
-        'time': '2 saat önce',
-        'color': Colors.orange,
-      },
-      {
-        'icon': Icons.check_circle_rounded,
-        'title': 'Normal Aktivite',
-        'subtitle': '4.2 km yürüyüş tamamlandı',
-        'time': '5 saat önce',
-        'color': Colors.green,
-      },
-      {
-        'icon': Icons.favorite_rounded,
-        'title': 'Yüksek Nabız',
-        'subtitle': '125 bpm - Egzersiz sırasında',
-        'time': 'Dün',
-        'color': Colors.red,
-      },
-      {
-        'icon': Icons.bed_rounded,
-        'title': 'İyi Uyku',
-        'subtitle': '7.5 saat kaliteli uyku',
-        'time': 'Dün',
-        'color': Colors.blue,
-      },
-    ];
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+  
+  Widget _buildSectionTitle(String title, LocalizationService loc) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Text(
+        title,
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.all(20),
-            child: Text(
-              'Son Olaylar',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+    );
+  }
+  
+  Widget _buildAlarmCard(alarm, LocalizationService loc) {
+    IconData icon;
+    Color color;
+    
+    switch (alarm.type) {
+      case 'fall':
+        icon = Icons.warning;
+        color = Colors.red;
+        break;
+      case 'heart_rate':
+        icon = Icons.favorite;
+        color = Colors.orange;
+        break;
+      case 'inactivity':
+        icon = Icons.airline_seat_recline_normal;
+        color = Colors.amber;
+        break;
+      case 'manual':
+        icon = Icons.emergency;
+        color = Colors.red[900]!;
+        break;
+      default:
+        icon = Icons.info;
+        color = Colors.blue;
+    }
+    
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Icon(icon, color: color, size: 32),
+        title: Text(alarm.message, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(DateFormat('dd/MM/yyyy HH:mm').format(alarm.timestamp)),
+        trailing: alarm.heartRate != null 
+          ? Text('${alarm.heartRate!.toInt()} bpm', 
+              style: const TextStyle(fontWeight: FontWeight.bold))
+          : null,
+      ),
+    );
+  }
+  
+  Widget _buildEmptyState(String message) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          children: [
+            Icon(Icons.inbox, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(message, style: TextStyle(color: Colors.grey[600])),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  List _filterRecords(List records) {
+    final now = DateTime.now();
+    switch (_selectedPeriod) {
+      case 'today':
+        final today = DateTime(now.year, now.month, now.day);
+        return records.where((r) => r.timestamp.isAfter(today)).toList();
+      case 'week':
+        final weekAgo = now.subtract(const Duration(days: 7));
+        return records.where((r) => r.timestamp.isAfter(weekAgo)).toList();
+      default:
+        return records;
+    }
+  }
+  
+  List _filterAlarms(List alarms) {
+    final now = DateTime.now();
+    switch (_selectedPeriod) {
+      case 'today':
+        final today = DateTime(now.year, now.month, now.day);
+        return alarms.where((a) => a.timestamp.isAfter(today)).toList();
+      case 'week':
+        final weekAgo = now.subtract(const Duration(days: 7));
+        return alarms.where((a) => a.timestamp.isAfter(weekAgo)).toList();
+      default:
+        return alarms;
+    }
+  }
+  
+  void _showClearDialog(BuildContext context, SensorDataProvider provider, 
+      LocalizationService loc) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(loc.t('clear_history')),
+        content: Text(loc.t('clear_history_confirm')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(loc.t('cancel')),
           ),
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: events.length,
-            separatorBuilder: (context, index) => Divider(
-              height: 1,
-              color: Colors.grey[200],
-            ),
-            itemBuilder: (context, index) {
-              final event = events[index];
-              return ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 8,
-                ),
-                leading: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: (event['color'] as Color).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    event['icon'] as IconData,
-                    color: event['color'] as Color,
-                    size: 24,
-                  ),
-                ),
-                title: Text(
-                  event['title'] as String,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                  ),
-                ),
-                subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    event['subtitle'] as String,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ),
-                trailing: Text(
-                  event['time'] as String,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[500],
-                  ),
-                ),
+          ElevatedButton(
+            onPressed: () {
+              provider.clearHistory();
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(loc.t('history_cleared'))),
               );
             },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: Text(loc.t('clear')),
           ),
         ],
       ),

@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class EmergencyService {
+  
   // Bakıcı bilgilerini kaydet
   static Future<void> saveCaregiverInfo({
     required String name,
@@ -51,8 +52,10 @@ class EmergencyService {
 
       // Konumu al
       Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 10),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
       );
       
       debugPrint('✅ Konum alındı: ${position.latitude}, ${position.longitude}');
@@ -69,7 +72,7 @@ class EmergencyService {
     return 'https://www.google.com/maps?q=${position.latitude},${position.longitude}';
   }
   
-  // Acil durum SMS'i gönder (url_launcher ile)
+  // Acil durum SMS'i gönder
   static Future<bool> sendEmergencySMS({
     required String emergencyType,
     Position? location,
@@ -98,7 +101,7 @@ class EmergencyService {
       debugPrint('📱 SMS gönderiliyor: $phone');
       debugPrint('💬 Mesaj: $message');
       
-      // url_launcher ile SMS uygulamasını aç (Android ve iOS)
+      // SMS URI oluştur (hem Android hem iOS)
       final Uri smsUri = Uri(
         scheme: 'sms',
         path: phone,
@@ -110,7 +113,7 @@ class EmergencyService {
         debugPrint('✅ SMS uygulaması açıldı');
         return true;
       } else {
-        debugPrint('❌ SMS uygulaması açılamadı');
+        debugPrint('❌ SMS gönderilemedi');
         return false;
       }
       
@@ -197,7 +200,7 @@ class EmergencyService {
             children: [
               CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
               SizedBox(width: 16),
-              Text('SMS uygulaması açılıyor...'),
+              Text('SMS gönderiliyor...'),
             ],
           ),
           backgroundColor: Colors.orange,
@@ -225,14 +228,14 @@ class EmergencyService {
               Expanded(
                 child: Text(
                   smsSent 
-                    ? '✅ SMS uygulaması açıldı!\nBakıcı: ${caregiverInfo['name']}\nLütfen mesajı gönderin.'
-                    : '❌ SMS uygulaması açılamadı. Lütfen manuel olarak arayın.',
+                    ? '✅ Acil durum SMS\'i gönderildi!\nBakıcı: ${caregiverInfo['name']}'
+                    : '❌ SMS gönderilemedi. Lütfen manuel olarak arayın.',
                 ),
               ),
             ],
           ),
           backgroundColor: smsSent ? Colors.green : Colors.red,
-          duration: const Duration(seconds: 5),
+          duration: const Duration(seconds: 4),
           action: SnackBarAction(
             label: 'ARA',
             textColor: Colors.white,
@@ -273,11 +276,10 @@ class EmergencyService {
         SnackBar(
           content: Text(
             success 
-              ? '✅ SMS uygulaması açıldı! Lütfen test mesajını gönderin.' 
-              : '❌ SMS uygulaması açılamadı',
+              ? '✅ Test mesajı gönderildi!' 
+              : '❌ Test mesajı gönderilemedi',
           ),
           backgroundColor: success ? Colors.green : Colors.red,
-          duration: const Duration(seconds: 4),
         ),
       );
     }

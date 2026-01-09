@@ -32,16 +32,17 @@ dependencies:
   # Ekranı açık tutma (Wake Lock)
   wakelock_plus: ^1.2.8
   
-  # URL launcher (arama ve SMS için)
+  # URL launcher (arama için)
   url_launcher: ^6.3.1
   
-  # ❌ telephony paketi kaldırıldı - url_launcher kullanıyoruz
-  
-  # Konum servisi
+  # Konum servisleri
   geolocator: ^13.0.2
   
-  # Veri saklama
+  # 🆕 Local storage (Dil seçimi için)
   shared_preferences: ^2.3.5
+  
+  # Tarih/saat formatı (History için)
+  intl: ^0.19.0
   
   # Materyal design icons
   cupertino_icons: ^1.0.2

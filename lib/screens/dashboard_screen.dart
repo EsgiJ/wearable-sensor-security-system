@@ -2,317 +2,115 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../providers/sensor_data_provider.dart';
+import '../services/localization_service.dart';
 
-class DashboardScreen extends StatefulWidget {
+class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
-}
-
-class _DashboardScreenState extends State<DashboardScreen> 
-    with SingleTickerProviderStateMixin {
-  late AnimationController _emergencyButtonController;
-  late Animation<double> _emergencyButtonAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _emergencyButtonController = AnimationController(
-      duration: const Duration(milliseconds: 1000),
-      vsync: this,
-    );
-    _emergencyButtonAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
-      CurvedAnimation(
-        parent: _emergencyButtonController,
-        curve: Curves.easeInOut,
-      ),
-    );
-    _emergencyButtonController.repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _emergencyButtonController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final localization = LocalizationService();
+    
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      appBar: AppBar(
+        title: Text(localization.t('app_title')),
+        centerTitle: true,
+        actions: [
+          // Dil değiştir butonu
+          IconButton(
+            icon: Icon(
+              localization.isEnglish ? Icons.language : Icons.translate,
+            ),
+            tooltip: localization.isEnglish ? 'Türkçe' : 'English',
+            onPressed: () async {
+              await localization.toggleLanguage();
+            },
+          ),
+        ],
+      ),
       body: Consumer<SensorDataProvider>(
         builder: (context, provider, child) {
-          return CustomScrollView(
-            slivers: [
-              // Modern App Bar
-              _buildSliverAppBar(provider),
-              
-              // İçerik
-              SliverToBoxAdapter(
-                child: Column(
-                  children: [
-                    const SizedBox(height: 16),
-                    
-                    // Alarmlar (varsa)
-                    if (_hasActiveAlarm(provider))
-                      _buildAlarmSection(provider),
-                    
-                    // Manuel Acil Durum Butonu
-                    _buildEmergencyButton(context, provider),
-                    
-                    // İstatistikler Grid
-                    _buildStatsGrid(provider),
-                    
-                    // Kalp Atışı Grafiği
-                    _buildHeartRateChart(provider),
-                    
-                    // İvmeölçer Kartı
-                    _buildAccelerometerCard(provider),
-                    
-                    const SizedBox(height: 24),
-                  ],
-                ),
-              ),
-            ],
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Bağlantı Durumu - Üstte belirgin şekilde
+                _buildConnectionCard(provider, localization),
+                const SizedBox(height: 16),
+                
+                // ALARM DURDUR BUTONU (Aktif alarmlar varsa)
+                if (provider.hasActiveAlarm)
+                  _buildStopAlarmButton(context, provider, localization),
+                
+                // Alarmlar
+                if (_hasActiveAlarm(provider))
+                  _buildAlarmSection(provider, localization),
+                
+                // Manuel Acil Durum Butonu
+                _buildEmergencyButton(context, provider, localization),
+                const SizedBox(height: 16),
+                
+                // Kalp Atışı Kartı
+                _buildHeartRateCard(provider, localization),
+                const SizedBox(height: 16),
+                
+                // Kalp Atışı Grafiği
+                _buildHeartRateChart(provider, localization),
+                const SizedBox(height: 16),
+                
+                // İvmeölçer Verileri
+                _buildAccelerometerCard(provider, localization),
+                const SizedBox(height: 16),
+                
+                // Hareket Durumu
+                _buildMovementCard(provider, localization),
+              ],
+            ),
           );
         },
       ),
     );
   }
-
-  Widget _buildSliverAppBar(SensorDataProvider provider) {
-    return SliverAppBar(
-      expandedHeight: 120,
-      floating: false,
-      pinned: true,
-      elevation: 0,
-      backgroundColor: Colors.blue,
-      flexibleSpace: FlexibleSpaceBar(
-        title: const Text(
-          'Akıllı Güvenlik',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        background: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.blue,
-                Colors.blue.shade700,
-                Colors.blue.shade900,
-              ],
-            ),
-          ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 56),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _getGreeting(),
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const Text(
-                        'Sistem Aktif',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  _buildConnectionBadge(provider),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _getGreeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'Günaydın';
-    if (hour < 18) return 'İyi Günler';
-    return 'İyi Akşamlar';
-  }
-
-  Widget _buildConnectionBadge(SensorDataProvider provider) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: provider.isConnected 
-            ? Colors.green.withValues(alpha: 0.2)
-            : Colors.red.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: provider.isConnected ? Colors.green : Colors.red,
-          width: 1.5,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: provider.isConnected ? Colors.green : Colors.red,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            provider.isConnected ? 'Bağlı' : 'Bağlı Değil',
-            style: TextStyle(
-              color: provider.isConnected ? Colors.green : Colors.red,
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
+  
   bool _hasActiveAlarm(SensorDataProvider provider) {
     return provider.fallDetected || 
            provider.inactivityAlarm || 
            provider.heartRateAlarm ||
            provider.manualAlarm;
   }
-
-  Widget _buildAlarmSection(SensorDataProvider provider) {
+  
+  Widget _buildStopAlarmButton(
+    BuildContext context, 
+    SensorDataProvider provider,
+    LocalizationService localization,
+  ) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        children: [
-          if (provider.fallDetected)
-            _buildAlarmCard(
-              icon: Icons.warning_rounded,
-              title: 'DÜŞME TESPİT EDİLDİ!',
-              subtitle: 'Acil durum protokolü başlatıldı',
-              color: Colors.red,
-              urgent: true,
-            ),
-          if (provider.inactivityAlarm)
-            _buildAlarmCard(
-              icon: Icons.timer_off_rounded,
-              title: 'Uzun Süreli Hareketsizlik',
-              subtitle: '${provider.inactivityTimeMinutes} dakikadır hareket yok',
-              color: Colors.orange,
-            ),
-          if (provider.heartRateAlarm)
-            _buildAlarmCard(
-              icon: Icons.favorite_rounded,
-              title: 'Anormal Kalp Atışı',
-              subtitle: 'Nabız: ${provider.heartRate.toInt()} bpm',
-              color: Colors.red,
-              urgent: true,
-            ),
-          if (provider.manualAlarm)
-            _buildAlarmCard(
-              icon: Icons.sos_rounded,
-              title: 'MANUEL ACİL DURUM',
-              subtitle: 'Kullanıcı yardım çağırdı',
-              color: Colors.red,
-              urgent: true,
-            ),
-          const SizedBox(height: 8),
-          _buildClearAlarmsButton(provider),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAlarmCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-    bool urgent = false,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color, width: 2),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: color, size: 32),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: urgent ? 16 : 15,
-                    color: color,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey[700],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (urgent)
-            Icon(Icons.emergency, color: color, size: 24),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildClearAlarmsButton(SensorDataProvider provider) {
-    return SizedBox(
+      margin: const EdgeInsets.only(bottom: 16),
       width: double.infinity,
+      height: 70,
       child: ElevatedButton.icon(
-        onPressed: provider.resetAlarms,
-        icon: const Icon(Icons.clear_all_rounded),
-        label: const Text('Alarmları Temizle'),
+        onPressed: () {
+          provider.stopAlarm();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(localization.t('alarm_stopped')),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        },
+        icon: const Icon(Icons.volume_off, size: 32),
+        label: Text(
+          localization.t('stop_alarm'),
+          style: const TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.grey[300],
-          foregroundColor: Colors.grey[800],
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          backgroundColor: Colors.orange,
+          foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -320,81 +118,153 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
     );
   }
-
-  Widget _buildEmergencyButton(BuildContext context, SensorDataProvider provider) {
-    return AnimatedBuilder(
-      animation: _emergencyButtonAnimation,
-      builder: (context, child) {
-        return Transform.scale(
-          scale: _emergencyButtonAnimation.value,
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            height: 100,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Colors.red, Colors.redAccent],
-              ),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.red.withValues(alpha: 0.4),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(20),
-                onTap: () => _showEmergencyDialog(context, provider),
-                child: const Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.emergency, size: 40, color: Colors.white),
-                    SizedBox(height: 8),
-                    Text(
-                      'ACİL DURUM',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
+  
+  Widget _buildConnectionCard(SensorDataProvider provider, LocalizationService localization) {
+    return Card(
+      elevation: 4,
+      color: provider.isConnected ? Colors.green[50] : Colors.grey[100],
+      child: ListTile(
+        leading: Icon(
+          provider.isConnected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
+          color: provider.isConnected ? Colors.green : Colors.grey,
+          size: 36,
+        ),
+        title: Text(
+          provider.isConnected ? localization.t('connected') : localization.t('not_connected'),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        subtitle: Text(
+          provider.isConnected 
+              ? '${localization.t('device_name')}: ${provider.deviceName}' 
+              : localization.t('connect_device'),
+          style: const TextStyle(fontSize: 14),
+        ),
+        trailing: provider.isConnected
+            ? const Icon(Icons.check_circle, color: Colors.green, size: 32)
+            : const Icon(Icons.error_outline, color: Colors.grey, size: 32),
+      ),
     );
   }
-
-  void _showEmergencyDialog(BuildContext context, SensorDataProvider provider) {
+  
+  Widget _buildAlarmSection(SensorDataProvider provider, LocalizationService localization) {
+    List<Widget> alarms = [];
+    
+    if (provider.fallDetected) {
+      alarms.add(_buildAlarmCard(
+        localization.t('fall_detected'),
+        localization.t('fall_detected_desc'),
+        Colors.red,
+      ));
+    }
+    
+    if (provider.inactivityAlarm) {
+      alarms.add(_buildAlarmCard(
+        localization.t('inactivity_detected'),
+        '${provider.inactivityTimeMinutes} ${localization.t('minutes')} ${localization.t('inactivity_detected_desc')}',
+        Colors.orange,
+      ));
+    }
+    
+    if (provider.heartRateAlarm) {
+      alarms.add(_buildAlarmCard(
+        localization.t('abnormal_heart_rate'),
+        '${localization.t('abnormal_hr_desc')}: ${provider.heartRate.toInt()} ${localization.t('bpm')}',
+        Colors.red,
+      ));
+    }
+    
+    if (provider.manualAlarm) {
+      alarms.add(_buildAlarmCard(
+        localization.t('manual_emergency'),
+        localization.t('manual_emergency_desc'),
+        Colors.red,
+      ));
+    }
+    
+    return Column(
+      children: [
+        ...alarms,
+        const SizedBox(height: 8),
+        ElevatedButton.icon(
+          onPressed: provider.resetAlarms,
+          icon: const Icon(Icons.clear),
+          label: Text(localization.t('clear_alarms')),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.grey[300],
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+  
+  Widget _buildAlarmCard(String title, String subtitle, Color color) {
+    return Card(
+      color: color.withAlpha(25), // 0.1 opacity = 25/255
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Icon(Icons.warning, color: color, size: 32),
+        title: Text(
+          title,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: color,
+            fontSize: 16,
+          ),
+        ),
+        subtitle: Text(subtitle, style: const TextStyle(fontSize: 14)),
+      ),
+    );
+  }
+  
+  Widget _buildEmergencyButton(
+    BuildContext context, 
+    SensorDataProvider provider,
+    LocalizationService localization,
+  ) {
+    return SizedBox(
+      width: double.infinity,
+      height: 80,
+      child: ElevatedButton(
+        onPressed: () {
+          _showEmergencyDialog(context, provider, localization);
+        },
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.red,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.emergency, size: 32),
+            const SizedBox(height: 4),
+            Text(
+              localization.t('emergency_button'),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  void _showEmergencyDialog(
+    BuildContext context, 
+    SensorDataProvider provider,
+    LocalizationService localization,
+  ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.warning_rounded, color: Colors.red, size: 28),
-            SizedBox(width: 12),
-            Text('Acil Durum Çağrısı'),
-          ],
-        ),
-        content: const Text(
-          'Bakıcınıza ve acil servislere uyarı gönderilecek. Devam etmek istiyor musunuz?',
-          style: TextStyle(fontSize: 15),
-        ),
+        title: Text(localization.t('emergency_call_title')),
+        content: Text(localization.t('emergency_call_message')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('İptal'),
+            child: Text(localization.t('cancel')),
           ),
           ElevatedButton(
             onPressed: () {
@@ -402,407 +272,212 @@ class _DashboardScreenState extends State<DashboardScreen>
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: const Row(
-                    children: [
-                      Icon(Icons.check_circle, color: Colors.white),
-                      SizedBox(width: 12),
-                      Expanded(child: Text('Acil durum uyarısı gönderildi!')),
-                    ],
-                  ),
+                  content: Text(localization.t('emergency_sent')),
                   backgroundColor: Colors.red,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
                 ),
               );
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Evet, Gönder'),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: Text(localization.t('yes_send')),
           ),
         ],
       ),
     );
   }
-
-  Widget _buildStatsGrid(SensorDataProvider provider) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatCard(
-                  icon: Icons.favorite_rounded,
-                  label: 'Kalp Atışı',
-                  value: '${provider.heartRate.toInt()}',
-                  unit: 'bpm',
-                  color: _getHeartRateColor(provider),
-                  trend: _getHeartRateTrend(provider),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildStatCard(
-                  icon: provider.isMoving ? Icons.directions_walk : Icons.bed,
-                  label: 'Durum',
-                  value: provider.isMoving ? 'Aktif' : 'Dinlenme',
-                  unit: '',
-                  color: provider.isMoving ? Colors.green : Colors.orange,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Color _getHeartRateColor(SensorDataProvider provider) {
+  
+  Widget _buildHeartRateCard(SensorDataProvider provider, LocalizationService localization) {
+    Color heartColor = Colors.green;
     if (provider.heartRate < provider.minHeartRate || 
         provider.heartRate > provider.maxHeartRate) {
-      return Colors.red;
+      heartColor = Colors.red;
     }
-    return Colors.green;
-  }
-
-  String? _getHeartRateTrend(SensorDataProvider provider) {
-    if (provider.heartRateHistory.length < 2) return null;
-    final last = provider.heartRateHistory.last.value;
-    final previous = provider.heartRateHistory[provider.heartRateHistory.length - 2].value;
-    if (last > previous + 5) return '↑';
-    if (last < previous - 5) return '↓';
-    return '→';
-  }
-
-  Widget _buildStatCard({
-    required IconData icon,
-    required String label,
-    required String value,
-    required String unit,
-    required Color color,
-    String? trend,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            color.withValues(alpha: 0.1),
-            color.withValues(alpha: 0.05),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Icon(icon, color: color, size: 28),
-              if (trend != null)
-                Text(
-                  trend,
-                  style: TextStyle(fontSize: 24, color: color),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey[700],
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                ),
-              ),
-              if (unit.isNotEmpty) ...[
-                const SizedBox(width: 4),
-                Text(
-                  unit,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
+    
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Icon(Icons.favorite, color: heartColor, size: 48),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    localization.t('heart_rate'),
+                    style: const TextStyle(fontSize: 16, color: Colors.grey),
                   ),
-                ),
-              ],
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeartRateChart(SensorDataProvider provider) {
-    if (provider.heartRateHistory.isEmpty) {
-      return Container(
-        margin: const EdgeInsets.all(16),
-        padding: const EdgeInsets.all(32),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Center(
-          child: Column(
-            children: [
-              Icon(Icons.show_chart, size: 48, color: Colors.grey[400]),
-              const SizedBox(height: 16),
-              Text(
-                'Veri bekleniyor...',
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Kalp Atışı Geçmişi',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.timeline, size: 16, color: Colors.blue.shade700),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Canlı',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue.shade700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            height: 200,
-            child: LineChart(
-              LineChartData(
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  getDrawingHorizontalLine: (value) {
-                    return FlLine(
-                      color: Colors.grey[200],
-                      strokeWidth: 1,
-                    );
-                  },
-                ),
-                titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 40,
-                      getTitlesWidget: (value, meta) {
-                        return Text(
-                          value.toInt().toString(),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
-                        );
-                      },
+                  Text(
+                    '${provider.heartRate.toInt()} ${localization.t('bpm')}',
+                    style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: heartColor,
                     ),
                   ),
-                  bottomTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                ),
-                borderData: FlBorderData(show: false),
-                minY: 40,
-                maxY: 140,
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: provider.heartRateHistory
-                        .asMap()
-                        .entries
-                        .map((e) => FlSpot(
-                              e.key.toDouble(),
-                              e.value.value,
-                            ))
-                        .toList(),
-                    isCurved: true,
-                    gradient: LinearGradient(
-                      colors: [Colors.red.shade400, Colors.red.shade700],
-                    ),
-                    barWidth: 3,
-                    dotData: const FlDotData(show: false),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.red.shade400.withValues(alpha: 0.3),
-                          Colors.red.shade700.withValues(alpha: 0.1),
-                        ],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                      ),
-                    ),
+                  Text(
+                    '${localization.t('normal_range')}: ${provider.minHeartRate.toInt()}-${provider.maxHeartRate.toInt()} ${localization.t('bpm')}',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                 ],
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAccelerometerCard(SensorDataProvider provider) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'İvmeölçer Verileri',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 20),
-          _buildAccelerometerRow('X Ekseni', provider.accelerometerX, Colors.red),
-          const SizedBox(height: 12),
-          _buildAccelerometerRow('Y Ekseni', provider.accelerometerY, Colors.green),
-          const SizedBox(height: 12),
-          _buildAccelerometerRow('Z Ekseni', provider.accelerometerZ, Colors.blue),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAccelerometerRow(String label, double value, Color color) {
-    final normalizedValue = ((value + 2) / 4).clamp(0.0, 1.0);
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            Text(
-              value.toStringAsFixed(2),
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: color,
-              ),
-            ),
           ],
         ),
-        const SizedBox(height: 8),
-        Stack(
+      ),
+    );
+  }
+  
+  Widget _buildHeartRateChart(SensorDataProvider provider, LocalizationService localization) {
+    if (provider.heartRateHistory.isEmpty) {
+      return Card(
+        child: Container(
+          height: 200,
+          alignment: Alignment.center,
+          child: Text(localization.t('no_data')),
+        ),
+      );
+    }
+    
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              height: 8,
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(4),
-              ),
+            Text(
+              localization.t('heart_rate_trend'),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
-            FractionallySizedBox(
-              widthFactor: normalizedValue,
-              child: Container(
-                height: 8,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [color.withValues(alpha: 0.5), color],
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 200,
+              child: LineChart(
+                LineChartData(
+                  gridData: const FlGridData(show: true),
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 40,
+                        getTitlesWidget: (value, meta) {
+                          return Text(
+                            value.toInt().toString(),
+                            style: const TextStyle(fontSize: 10),
+                          );
+                        },
+                      ),
+                    ),
+                    bottomTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
                   ),
-                  borderRadius: BorderRadius.circular(4),
+                  borderData: FlBorderData(show: true),
+                  minY: 0,
+                  maxY: 200,
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: provider.heartRateHistory
+                          .asMap()
+                          .entries
+                          .map((e) => FlSpot(
+                                e.key.toDouble(),
+                                e.value.value,
+                              ))
+                          .toList(),
+                      isCurved: true,
+                      color: Colors.red,
+                      barWidth: 3,
+                      dotData: const FlDotData(show: false),
+                    ),
+                  ],
                 ),
               ),
             ),
           ],
         ),
-      ],
+      ),
+    );
+  }
+  
+  Widget _buildAccelerometerCard(SensorDataProvider provider, LocalizationService localization) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              localization.t('accelerometer_data'),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            _buildAccelerometerRow('X', provider.accelerometerX, Colors.red),
+            _buildAccelerometerRow('Y', provider.accelerometerY, Colors.green),
+            _buildAccelerometerRow('Z', provider.accelerometerZ, Colors.blue),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildAccelerometerRow(String label, double value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 70,
+            child: Text('$label:', style: const TextStyle(fontSize: 14)),
+          ),
+          Expanded(
+            child: LinearProgressIndicator(
+              value: (value + 2) / 4, // -2 to +2 range normalized to 0-1
+              backgroundColor: Colors.grey[200],
+              color: color,
+              minHeight: 20,
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 50,
+            child: Text(
+              value.toStringAsFixed(2),
+              style: const TextStyle(fontWeight: FontWeight.bold),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildMovementCard(SensorDataProvider provider, LocalizationService localization) {
+    return Card(
+      color: provider.isMoving ? Colors.green[50] : Colors.orange[50],
+      child: ListTile(
+        leading: Icon(
+          provider.isMoving ? Icons.directions_walk : Icons.not_interested,
+          color: provider.isMoving ? Colors.green : Colors.orange,
+          size: 32,
+        ),
+        title: Text(
+          provider.isMoving ? localization.t('moving') : localization.t('not_moving'),
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          provider.isMoving 
+              ? localization.t('user_active')
+              : localization.t('monitoring_inactivity'),
+        ),
+      ),
     );
   }
 }
