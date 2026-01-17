@@ -24,6 +24,7 @@ class SensorDataProvider extends ChangeNotifier {
   double _accelerometerZ = 0;
   bool _isMoving = true;
   DateTime _lastMovementTime = DateTime.now();
+  DateTime? _lastDataTime; // 🆕 Son veri zamanı
   
   // Alarm durumları
   bool _fallDetected = false;
@@ -35,17 +36,17 @@ class SensorDataProvider extends ChangeNotifier {
   double _minHeartRate = 40;
   double _maxHeartRate = 120;
   int _inactivityTimeMinutes = 30;
-  final double _fallThreshold = 3.5;
+  double _fallThreshold = 2.5; // 🆕 ARTIK DEĞİŞTİRİLEBİLİR!
   
-  // Grafik için geçmiş veriler (anlık)
+  // Grafik için geçmiş veriler
   final List<HeartRateData> _heartRateHistory = [];
   final int _maxHistoryLength = 50;
   
-  // 🆕 GERÇEK VERİ KAYITLARI
+  // Gerçek veri kayıtları
   final List<SensorRecord> _sensorRecords = [];
   final List<AlarmRecord> _alarmRecords = [];
   DateTime? _lastSaveTime;
-  final int _saveIntervalSeconds = 30; // 30 saniyede bir kaydet
+  final int _saveIntervalSeconds = 30;
 
   // Getters
   bool get isConnected => _isConnected;
@@ -64,14 +65,35 @@ class SensorDataProvider extends ChangeNotifier {
   int get inactivityTimeMinutes => _inactivityTimeMinutes;
   List<HeartRateData> get heartRateHistory => _heartRateHistory;
   
-  // 🆕 History getters
+  // 🆕 Fall threshold getter
+  double get fallThreshold => _fallThreshold;
+  
+  // 🆕 Son veri zamanı getter
+  DateTime? get lastDataTime => _lastDataTime;
+  
+  // 🆕 Toplam ivme hesaplama
+  double get totalAcceleration => sqrt(
+    _accelerometerX * _accelerometerX +
+    _accelerometerY * _accelerometerY +
+    _accelerometerZ * _accelerometerZ
+  );
+  
+  // History getters
   List<SensorRecord> get sensorRecords => _sensorRecords;
   List<AlarmRecord> get alarmRecords => _alarmRecords;
   
   bool get hasActiveAlarm => 
       _fallDetected || _inactivityAlarm || _heartRateAlarm || _manualAlarm;
   
-  // 🆕 Veri yükleme (uygulama başlangıcında çağrılmalı)
+  // 🆕 Fall threshold setter
+  void setFallThreshold(double value) {
+    _fallThreshold = value;
+    debugPrint('⚙️ Fall threshold değiştirildi: $value G');
+    _saveHistoryData(); // Hemen kaydet
+    notifyListeners();
+  }
+  
+  // Veri yükleme
   Future<void> loadHistoryData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -96,30 +118,36 @@ class SensorDataProvider extends ChangeNotifier {
         );
       }
       
-      debugPrint('✅ Geçmiş veriler yüklendi: ${_sensorRecords.length} sensör, ${_alarmRecords.length} alarm');
+      // 🆕 Fall threshold'u yükle
+      final savedThreshold = prefs.getDouble('fall_threshold');
+      if (savedThreshold != null) {
+        _fallThreshold = savedThreshold;
+      }
+      
+      debugPrint('✅ Veriler yüklendi: threshold=$_fallThreshold G');
       notifyListeners();
     } catch (e) {
       debugPrint('❌ Veri yükleme hatası: $e');
     }
   }
   
-  // 🆕 Veri kaydetme
+  // Veri kaydetme
   Future<void> _saveHistoryData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       
-      // Son 7 günün verilerini sakla (performans için)
+      // Son 7 günün verilerini sakla
       final weekAgo = DateTime.now().subtract(const Duration(days: 7));
       _sensorRecords.removeWhere((r) => r.timestamp.isBefore(weekAgo));
       _alarmRecords.removeWhere((r) => r.timestamp.isBefore(weekAgo));
       
-      // JSON'a çevir ve kaydet
       await prefs.setString('sensor_records', 
         jsonEncode(_sensorRecords.map((e) => e.toJson()).toList()));
       await prefs.setString('alarm_records',
         jsonEncode(_alarmRecords.map((e) => e.toJson()).toList()));
       
-      debugPrint('💾 Veriler kaydedildi: ${_sensorRecords.length} sensör, ${_alarmRecords.length} alarm');
+      // 🆕 Fall threshold'u kaydet
+      await prefs.setDouble('fall_threshold', _fallThreshold);
     } catch (e) {
       debugPrint('❌ Veri kaydetme hatası: $e');
     }
@@ -137,28 +165,38 @@ class SensorDataProvider extends ChangeNotifier {
     double? accY,
     double? accZ,
   }) {
-    if (heartRate != null) {
+    // 🆕 Son veri zamanını güncelle
+    _lastDataTime = DateTime.now();
+    
+    if (heartRate != null && heartRate > 0) {
       _heartRate = heartRate;
       _addHeartRateToHistory(heartRate);
       _checkHeartRateAlarm();
+      debugPrint('❤️ HR=$heartRate');
     }
     
-    if (accX != null) _accelerometerX = accX;
-    if (accY != null) _accelerometerY = accY;
-    if (accZ != null) _accelerometerZ = accZ;
+    if (accX != null) {
+      _accelerometerX = accX;
+    }
+    if (accY != null) {
+      _accelerometerY = accY;
+    }
+    if (accZ != null) {
+      _accelerometerZ = accZ;
+    }
     
     if (accX != null || accY != null || accZ != null) {
+      debugPrint('📊 Acc X=$_accelerometerX Y=$_accelerometerY Z=$_accelerometerZ');
       _checkFallDetection();
       _checkMovement();
     }
     
-    // 🆕 30 saniyede bir kaydet
+    // 30 saniyede bir kaydet
     _autoSaveSensorData();
     
     notifyListeners();
   }
   
-  // 🆕 Otomatik kayıt (30 saniyede bir)
   void _autoSaveSensorData() {
     final now = DateTime.now();
     if (_lastSaveTime == null || 
@@ -186,21 +224,16 @@ class SensorDataProvider extends ChangeNotifier {
   }
   
   void _checkFallDetection() {
-    double totalAcceleration = sqrt(
-        _accelerometerX * _accelerometerX +
-        _accelerometerY * _accelerometerY +
-        _accelerometerZ * _accelerometerZ
-    );
+    double total = totalAcceleration;
     
-    debugPrint('🔍 Düşme kontrolü: ${totalAcceleration.toStringAsFixed(2)} G (Eşik: $_fallThreshold G)');
+    debugPrint('🔍 Düşme: ${total.toStringAsFixed(2)}G / Eşik: ${_fallThreshold}G');
     
-    if (totalAcceleration > _fallThreshold) {
+    if (total > _fallThreshold && !_fallDetected) {
       _fallDetected = true;
-      debugPrint('🚨 DÜŞME TESPİT EDİLDİ! İvme: ${totalAcceleration.toStringAsFixed(2)} G');
+      debugPrint('🚨 DÜŞME TESPİT! ${total.toStringAsFixed(2)} G');
       
-      // 🆕 Alarm kaydı ekle
       _saveAlarmRecord('fall', 'Düşme tespit edildi', 
-        accelerometerTotal: totalAcceleration);
+        accelerometerTotal: total);
       
       _triggerAlarm('Düşme tespit edildi!', 'DÜŞME TESPİT EDİLDİ');
     }
@@ -225,28 +258,27 @@ class SensorDataProvider extends ChangeNotifier {
     int minutesSinceLastMovement = 
         DateTime.now().difference(_lastMovementTime).inMinutes;
     
-    if (minutesSinceLastMovement >= _inactivityTimeMinutes) {
+    if (minutesSinceLastMovement >= _inactivityTimeMinutes && !_inactivityAlarm) {
       _inactivityAlarm = true;
       
-      // 🆕 Alarm kaydı ekle
       _saveAlarmRecord('inactivity', 
-        'Uzun süreli hareketsizlik: $minutesSinceLastMovement dakika');
+        'Hareketsizlik: $minutesSinceLastMovement dk');
       
-      _triggerAlarm('Uzun süreli hareketsizlik tespit edildi!', 
-        'HAREKETSİZLİK TESPİT EDİLDİ');
+      _triggerAlarm('Uzun süreli hareketsizlik!', 'HAREKETSİZLİK');
     }
   }
   
   void _checkHeartRateAlarm() {
     if (_heartRate < _minHeartRate || _heartRate > _maxHeartRate) {
-      _heartRateAlarm = true;
-      
-      // 🆕 Alarm kaydı ekle
-      _saveAlarmRecord('heart_rate', 'Anormal kalp atışı: $_heartRate bpm',
-        heartRate: _heartRate);
-      
-      _triggerAlarm('Anormal kalp atışı: ${_heartRate.toInt()} bpm',
-        'KALP ATIŞ ANOMALISI');
+      if (!_heartRateAlarm) {
+        _heartRateAlarm = true;
+        
+        _saveAlarmRecord('heart_rate', 'Anormal HR: $_heartRate bpm',
+          heartRate: _heartRate);
+        
+        _triggerAlarm('Anormal kalp atışı: ${_heartRate.toInt()} bpm',
+          'KALP ATIŞ ANOMALİSİ');
+      }
     } else {
       _heartRateAlarm = false;
     }
@@ -254,15 +286,11 @@ class SensorDataProvider extends ChangeNotifier {
   
   void triggerManualAlarm() {
     _manualAlarm = true;
-    
-    // 🆕 Alarm kaydı ekle
-    _saveAlarmRecord('manual', 'Manuel acil durum çağrısı');
-    
-    _triggerAlarm('Manuel acil durum çağrısı!', 'MANUEL ACİL DURUM');
+    _saveAlarmRecord('manual', 'Manuel acil durum');
+    _triggerAlarm('Manuel acil durum!', 'MANUEL ACİL DURUM');
     notifyListeners();
   }
   
-  // 🆕 Alarm kaydını ekle ve kaydet
   void _saveAlarmRecord(String type, String message, 
       {double? heartRate, double? accelerometerTotal}) {
     _alarmRecords.add(AlarmRecord(
@@ -287,11 +315,11 @@ class SensorDataProvider extends ChangeNotifier {
     
     if (message.contains('Düşme')) {
       NotificationService.showFallAlert();
-    } else if (message.contains('Hareketsizlik') || message.contains('HAREKETSİZLİK')) {
+    } else if (message.contains('Hareketsizlik')) {
       NotificationService.showInactivityAlert(_inactivityTimeMinutes);
-    } else if (message.contains('Kalp') || message.contains('KALP')) {
+    } else if (message.contains('Kalp')) {
       NotificationService.showHeartRateAlert(_heartRate.toInt());
-    } else if (message.contains('Manuel') || message.contains('MANUEL')) {
+    } else if (message.contains('Manuel')) {
       NotificationService.showManualEmergency();
     }
   }
@@ -302,7 +330,6 @@ class SensorDataProvider extends ChangeNotifier {
     _heartRateAlarm = false;
     _manualAlarm = false;
     NotificationService.stopAlarm();
-    debugPrint('⏹️ Alarm durduruldu');
     notifyListeners();
   }
   
@@ -321,12 +348,10 @@ class SensorDataProvider extends ChangeNotifier {
     notifyListeners();
   }
   
-  // 🆕 History temizleme
   Future<void> clearHistory() async {
     _sensorRecords.clear();
     _alarmRecords.clear();
     await _saveHistoryData();
-    debugPrint('🗑️ Geçmiş veriler temizlendi');
     notifyListeners();
   }
 }

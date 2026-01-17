@@ -56,9 +56,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ],
             
             // Alarm listesi
-            _buildSectionTitle(loc.t('alarm_history'), loc),
+            _buildSectionTitle(loc.t('Alarm History'), loc),
             if (filteredAlarms.isEmpty)
-              _buildEmptyState(loc.t('no_alarms'))
+              _buildEmptyState(loc.t('No alarms recorded'))
             else
               ...filteredAlarms.map((alarm) => _buildAlarmCard(alarm, loc)),
           ],

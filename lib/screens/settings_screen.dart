@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:async';  
+import 'dart:async';
+import 'dart:math';
 import '../providers/sensor_data_provider.dart';
-import '../services/emergency_service.dart';
-import '../services/localization_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -12,17 +11,17 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> 
-    with SingleTickerProviderStateMixin {
+class _SettingsScreenState extends State<SettingsScreen> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _minHeartRateController;
   late TextEditingController _maxHeartRateController;
   late TextEditingController _inactivityTimeController;
   late TextEditingController _caregiverNameController;
   late TextEditingController _caregiverPhoneController;
-  
-  late AnimationController _saveButtonController;
-  bool _isTestingSMS = false;
+
+  // 🆕 DEBUG MODE
+  bool _debugMode = false;
+  Timer? _debugRefreshTimer;
 
   @override
   void initState() {
@@ -40,23 +39,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
     _caregiverNameController = TextEditingController();
     _caregiverPhoneController = TextEditingController();
-    
-    _saveButtonController = AnimationController(
-      duration: const Duration(milliseconds: 500),
-      vsync: this,
-    );
-    
-    _loadCaregiverInfo();
-  }
-
-  Future<void> _loadCaregiverInfo() async {
-    final info = await EmergencyService.getCaregiverInfo();
-    if (mounted) {
-      setState(() {
-        _caregiverNameController.text = info['name'] ?? '';
-        _caregiverPhoneController.text = info['phone'] ?? '';
-      });
-    }
   }
 
   @override
@@ -66,11 +48,11 @@ class _SettingsScreenState extends State<SettingsScreen>
     _inactivityTimeController.dispose();
     _caregiverNameController.dispose();
     _caregiverPhoneController.dispose();
-    _saveButtonController.dispose();
+    _debugRefreshTimer?.cancel();
     super.dispose();
   }
 
-  void _saveSettings(LocalizationService loc) async {
+  void _saveSettings() {
     if (_formKey.currentState!.validate()) {
       final provider = Provider.of<SensorDataProvider>(context, listen: false);
       
@@ -80,382 +62,315 @@ class _SettingsScreenState extends State<SettingsScreen>
         inactivityTime: int.parse(_inactivityTimeController.text),
       );
       
-      await EmergencyService.saveCaregiverInfo(
-        name: _caregiverNameController.text.trim(),
-        phone: _caregiverPhoneController.text.trim(),
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Ayarlar kaydedildi!'),
+          backgroundColor: Colors.green,
+        ),
       );
-      
-      _saveButtonController.forward().then((_) {
-        _saveButtonController.reverse();
-      });
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 12),
-                Text(loc.t('settings_saved_success')),
-              ],
-            ),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
-      }
     }
-  }
-
-  Future<void> _testSMS(LocalizationService loc) async {
-    if (_caregiverPhoneController.text.trim().isEmpty) {
-      _showSnackBar(loc.t('first_enter_phone'), Colors.orange);
-      return;
-    }
-
-    setState(() => _isTestingSMS = true);
-
-    try {
-      await EmergencyService.testCaregiverContact(context);
-
-      if (mounted) {
-        _showSnackBar(loc.t('test_sms_sent'), Colors.green);
-      }
-    } catch (e) {
-      if (mounted) {
-        _showSnackBar('${loc.t('error')}: $e', Colors.red);
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isTestingSMS = false);
-      }
-    }
-  }
-
-  void _showSnackBar(String message, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(
-              color == Colors.green ? Icons.check_circle : Icons.error,
-              color: Colors.white,
-            ),
-            const SizedBox(width: 12),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final loc = Provider.of<LocalizationService>(context);
-    
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      body: CustomScrollView(
-        slivers: [
-          _buildSliverAppBar(loc),
-          SliverToBoxAdapter(
-            child: Form(
-              key: _formKey,
-              child: Column(
-                children: [
-                  const SizedBox(height: 16),
-                  _buildHeartRateSection(loc),
-                  _buildInactivitySection(loc),
-                  _buildCaregiverSection(loc),
-                  _buildNotificationSection(loc),
-                  _buildTestSection(loc),
-                  _buildSaveButton(loc),
-                  const SizedBox(height: 24),
-                ],
-              ),
+      appBar: AppBar(
+        title: const Text('Ayarlar'),
+        centerTitle: true,
+        actions: [
+          // 🆕 DEBUG MODE TOGGLE
+          IconButton(
+            icon: Icon(
+              _debugMode ? Icons.bug_report : Icons.bug_report_outlined,
+              color: _debugMode ? Colors.yellow : null,
             ),
+            tooltip: 'Debug Modu',
+            onPressed: () {
+              setState(() {
+                _debugMode = !_debugMode;
+                if (_debugMode) {
+                  // Debug modunda her 500ms'de güncelle
+                  _debugRefreshTimer = Timer.periodic(
+                    const Duration(milliseconds: 500),
+                    (_) => setState(() {}),
+                  );
+                } else {
+                  _debugRefreshTimer?.cancel();
+                }
+              });
+            },
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildSliverAppBar(LocalizationService loc) {
-    return SliverAppBar(
-      expandedHeight: 120,
-      floating: false,
-      pinned: true,
-      elevation: 0,
-      backgroundColor: Colors.blue,
-      flexibleSpace: FlexibleSpaceBar(
-        title: Text(
-          loc.t('settings'),
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        background: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.blue,
-                Colors.blue.shade700,
-                Colors.blue.shade900,
-              ],
-            ),
-          ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 56),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.settings,
-                      color: Colors.white,
-                      size: 32,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 🆕 DEBUG PANEL (EN ÜSTTE)
+              if (_debugMode) _buildDebugPanel(),
+              
+              // 🆕 DÜŞME EŞİĞİ AYARI (SLIDER)
+              _buildFallThresholdSection(),
+              
+              const SizedBox(height: 16),
+              
+              // Kalp Atışı Eşikleri
+              _buildSectionTitle('Kalp Atışı Eşikleri'),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
                     children: [
-                      Text(
-                        loc.t('system_settings'),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
+                      TextFormField(
+                        controller: _minHeartRateController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Minimum Nabız (bpm)',
+                          prefixIcon: Icon(Icons.favorite_border),
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) return 'Değer girin';
+                          final n = int.tryParse(value);
+                          if (n == null || n < 30 || n > 100) return '30-100 arası';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _maxHeartRateController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Maximum Nabız (bpm)',
+                          prefixIcon: Icon(Icons.favorite),
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) return 'Değer girin';
+                          final n = int.tryParse(value);
+                          if (n == null || n < 100 || n > 200) return '100-200 arası';
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // Hareketsizlik Ayarı
+              _buildSectionTitle('Hareketsizlik Tespiti'),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: TextFormField(
+                    controller: _inactivityTimeController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Hareketsizlik Süresi (dakika)',
+                      prefixIcon: Icon(Icons.timer),
+                      border: OutlineInputBorder(),
+                      helperText: 'Bu süre hareketsizlik olursa alarm verilir',
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) return 'Değer girin';
+                      final n = int.tryParse(value);
+                      if (n == null || n < 5 || n > 120) return '5-120 arası';
+                      return null;
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // Bakıcı Bilgileri
+              _buildSectionTitle('Bakıcı/Acil Durum İletişim'),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        controller: _caregiverNameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Bakıcı Adı',
+                          prefixIcon: Icon(Icons.person),
+                          border: OutlineInputBorder(),
                         ),
                       ),
-                      Text(
-                        loc.t('customize_preferences'),
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _caregiverPhoneController,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(
+                          labelText: 'Telefon Numarası',
+                          prefixIcon: Icon(Icons.phone),
+                          border: OutlineInputBorder(),
+                          helperText: 'Acil durumlarda aranacak',
                         ),
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
-            ),
+              const SizedBox(height: 24),
+              
+              // Kaydet Butonu
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: _saveSettings,
+                  icon: const Icon(Icons.save),
+                  label: const Text('Ayarları Kaydet', style: TextStyle(fontSize: 16)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // Test Butonu
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: OutlinedButton.icon(
+                  onPressed: _startTestMode,
+                  icon: const Icon(Icons.bug_report),
+                  label: const Text('Test Modu Başlat'),
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.orange),
+                ),
+              ),
+              const SizedBox(height: 32),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildHeartRateSection(LocalizationService loc) {
-    return _buildSection(
-      title: loc.t('heart_rate_thresholds'),
-      icon: Icons.favorite_rounded,
-      iconColor: Colors.red,
-      child: Column(
-        children: [
-          _buildTextField(
-            loc: loc,
-            controller: _minHeartRateController,
-            label: loc.t('minimum_heart_rate'),
-            icon: Icons.arrow_downward,
-            keyboardType: TextInputType.number,
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return loc.t('please_enter_value');
-              }
-              final number = int.tryParse(value);
-              if (number == null || number < 30 || number > 100) {
-                return '${loc.t('enter_value_between')} 30-100';
-              }
-              return null;
-            },
+  // 🆕 DEBUG PANEL - CANLI SENSÖR DEĞERLERİ
+  Widget _buildDebugPanel() {
+    return Consumer<SensorDataProvider>(
+      builder: (context, provider, child) {
+        final total = provider.totalAcceleration;
+        final threshold = provider.fallThreshold;
+        final isOverThreshold = total > threshold;
+        final lastUpdate = provider.lastDataTime;
+        final timeSince = lastUpdate != null 
+            ? DateTime.now().difference(lastUpdate).inSeconds 
+            : -1;
+        
+        return Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade900,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isOverThreshold ? Colors.red : Colors.green,
+              width: 2,
+            ),
           ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            loc: loc,
-            controller: _maxHeartRateController,
-            label: loc.t('maximum_heart_rate'),
-            icon: Icons.arrow_upward,
-            keyboardType: TextInputType.number,
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return loc.t('please_enter_value');
-              }
-              final number = int.tryParse(value);
-              if (number == null || number < 100 || number > 200) {
-                return '${loc.t('enter_value_between')} 100-200';
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 12),
-          _buildInfoBox(
-            loc.t('hr_normal_info'),
-            Colors.blue,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInactivitySection(LocalizationService loc) {
-    return _buildSection(
-      title: loc.t('inactivity_detection'),
-      icon: Icons.timer_rounded,
-      iconColor: Colors.orange,
-      child: Column(
-        children: [
-          _buildTextField(
-            loc: loc,
-            controller: _inactivityTimeController,
-            label: loc.t('inactivity_timeout'),
-            icon: Icons.schedule,
-            keyboardType: TextInputType.number,
-            helperText: loc.t('inactivity_timeout_help'),
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return loc.t('please_enter_value');
-              }
-              final number = int.tryParse(value);
-              if (number == null || number < 5 || number > 120) {
-                return '${loc.t('enter_value_between')} 5-120';
-              }
-              return null;
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCaregiverSection(LocalizationService loc) {
-    return _buildSection(
-      title: loc.t('emergency_contact'),
-      icon: Icons.contact_phone_rounded,
-      iconColor: Colors.red,
-      urgent: true,
-      urgentLabel: loc.t('important'),
-      child: Column(
-        children: [
-          _buildTextField(
-            loc: loc,
-            controller: _caregiverNameController,
-            label: loc.t('caregiver_name'),
-            icon: Icons.person,
-            keyboardType: TextInputType.name,
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            loc: loc,
-            controller: _caregiverPhoneController,
-            label: loc.t('phone_number'),
-            icon: Icons.phone,
-            keyboardType: TextInputType.phone,
-            helperText: loc.t('phone_help'),
-            validator: (value) {
-              if (value != null && value.isNotEmpty) {
-                if (value.length < 10) {
-                  return loc.t('enter_valid_phone');
-                }
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 16),
-          _buildTestSMSButton(loc),
-          const SizedBox(height: 12),
-          _buildInfoBox(
-            loc.t('emergency_warning'),
-            Colors.red,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNotificationSection(LocalizationService loc) {
-    return _buildSection(
-      title: loc.t('notification_settings'),
-      icon: Icons.notifications_rounded,
-      iconColor: Colors.purple,
-      child: Column(
-        children: [
-          _buildSwitchTile(
-            loc: loc,
-            title: loc.t('fall_notifications'),
-            subtitle: loc.t('fall_notif_desc'),
-            value: true,
-            icon: Icons.warning_rounded,
-          ),
-          _buildSwitchTile(
-            loc: loc,
-            title: loc.t('inactivity_notifications'),
-            subtitle: loc.t('inactivity_notif_desc'),
-            value: true,
-            icon: Icons.timer_off_rounded,
-          ),
-          _buildSwitchTile(
-            loc: loc,
-            title: loc.t('heart_rate_notifications'),
-            subtitle: loc.t('hr_notif_desc'),
-            value: true,
-            icon: Icons.favorite_rounded,
-          ),
-          _buildSwitchTile(
-            loc: loc,
-            title: loc.t('audio_alerts'),
-            subtitle: loc.t('audio_alerts_desc'),
-            value: true,
-            icon: Icons.volume_up_rounded,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTestSection(LocalizationService loc) {
-    return _buildSection(
-      title: loc.t('test_mode'),
-      icon: Icons.science_rounded,
-      iconColor: Colors.teal,
-      child: Column(
-        children: [
-          _buildInfoBox(
-            loc.t('test_mode_info'),
-            Colors.teal,
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () => _startTestMode(loc),
-              icon: const Icon(Icons.bug_report_rounded),
-              label: Text(loc.t('start_test_mode')),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.teal,
-                side: const BorderSide(color: Colors.teal, width: 2),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+          child: Column(
+            children: [
+              // Başlık
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isOverThreshold ? Colors.red : Colors.green.shade700,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      isOverThreshold ? Icons.warning : Icons.check_circle,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      isOverThreshold ? '⚠️ DÜŞME TESPİT!' : '✅ NORMAL',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        timeSince < 0 
+                            ? '⚪ BEKLENİYOR' 
+                            : timeSince < 3 
+                                ? '🟢 CANLI' 
+                                : '🟡 ${timeSince}s',
+                        style: const TextStyle(color: Colors.white, fontSize: 11),
+                      ),
+                    ),
+                  ],
                 ),
               ),
+              
+              // Sensör değerleri
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    _debugRow('KALP', '${provider.heartRate.toStringAsFixed(0)} bpm', Colors.red),
+                    const SizedBox(height: 6),
+                    _debugRow('ACC X', provider.accelerometerX.toStringAsFixed(3), Colors.orange),
+                    _debugRow('ACC Y', provider.accelerometerY.toStringAsFixed(3), Colors.yellow),
+                    _debugRow('ACC Z', provider.accelerometerZ.toStringAsFixed(3), Colors.cyan),
+                    const Divider(color: Colors.grey, height: 20),
+                    _debugRow(
+                      'TOPLAM', 
+                      '${total.toStringAsFixed(3)} G', 
+                      isOverThreshold ? Colors.red : Colors.green,
+                      bold: true,
+                      large: true,
+                    ),
+                    _debugRow('EŞİK', '${threshold.toStringAsFixed(1)} G', Colors.purple),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+  
+  Widget _debugRow(String label, String value, Color color, {bool bold = false, bool large = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 70,
+            child: Text(
+              label,
+              style: TextStyle(color: color, fontFamily: 'monospace', fontSize: 13),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: Colors.white,
+                fontFamily: 'monospace',
+                fontSize: large ? 20 : 14,
+                fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+              ),
+              textAlign: TextAlign.right,
             ),
           ),
         ],
@@ -463,282 +378,214 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  Widget _buildSection({
-    required String title,
-    required IconData icon,
-    required Color iconColor,
-    required Widget child,
-    bool urgent = false,
-    String? urgentLabel,
-  }) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: urgent ? Border.all(color: iconColor, width: 2) : null,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
+  // 🆕 DÜŞME EŞİĞİ SLIDER
+  Widget _buildFallThresholdSection() {
+    return Consumer<SensorDataProvider>(
+      builder: (context, provider, child) {
+        final currentAcc = provider.totalAcceleration;
+        final threshold = provider.fallThreshold;
+        final percentage = (currentAcc / threshold * 100).clamp(0, 150);
+        
+        return Card(
+          color: Colors.purple.shade50,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Row(
+                  children: [
+                    Icon(Icons.speed, color: Colors.purple.shade700, size: 24),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Düşme Eşiği (Fall Threshold)',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                
+                // Mevcut değer gösterimi
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.purple.shade200),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        '${threshold.toStringAsFixed(1)} G',
+                        style: TextStyle(
+                          fontSize: 36,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.purple.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // İlerleme çubuğu
+                      LinearProgressIndicator(
+                        value: (percentage / 100).clamp(0.0, 1.0),
+                        backgroundColor: Colors.grey.shade200,
+                        valueColor: AlwaysStoppedAnimation(
+                          percentage > 100 ? Colors.red : Colors.green,
+                        ),
+                        minHeight: 8,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Şu an: ${currentAcc.toStringAsFixed(2)} G (${percentage.toStringAsFixed(0)}%)',
+                        style: TextStyle(
+                          color: percentage > 100 ? Colors.red : Colors.green.shade700,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                // Slider
+                Row(
+                  children: [
+                    const Text('0.5', style: TextStyle(fontSize: 12)),
+                    Expanded(
+                      child: Slider(
+                        value: threshold,
+                        min: 0.5,
+                        max: 5.0,
+                        divisions: 18,
+                        activeColor: Colors.purple,
+                        label: '${threshold.toStringAsFixed(1)} G',
+                        onChanged: (value) {
+                          provider.setFallThreshold(value);
+                        },
+                      ),
+                    ),
+                    const Text('5.0', style: TextStyle(fontSize: 12)),
+                  ],
+                ),
+                
+                // Preset butonları
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _presetButton('Hassas\n1.5G', 1.5, provider),
+                    _presetButton('Normal\n2.5G', 2.5, provider),
+                    _presetButton('Düşük\n3.5G', 3.5, provider),
+                  ],
+                ),
+                
+                const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: iconColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.purple.shade100,
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(icon, color: iconColor, size: 24),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                if (urgent && urgentLabel != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: iconColor,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      urgentLabel,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, size: 18, color: Colors.purple.shade700),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Düşük eşik = daha hassas (yanlış alarm riski)\n'
+                          'Yüksek eşik = daha az hassas',
+                          style: TextStyle(fontSize: 11),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
+                ),
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-            child: child,
-          ),
-        ],
+        );
+      },
+    );
+  }
+  
+  Widget _presetButton(String label, double value, SensorDataProvider provider) {
+    final isSelected = (provider.fallThreshold - value).abs() < 0.1;
+    
+    return ElevatedButton(
+      onPressed: () => provider.setFallThreshold(value),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: isSelected ? Colors.purple : Colors.white,
+        foregroundColor: isSelected ? Colors.white : Colors.purple,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        side: BorderSide(color: Colors.purple.shade300),
       ),
+      child: Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11)),
     );
   }
 
-  Widget _buildTextField({
-    required LocalizationService loc,
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-    TextInputType? keyboardType,
-    String? helperText,
-    String? Function(String?)? validator,
-  }) {
-    return TextFormField(
-      controller: controller,
-      keyboardType: keyboardType,
-      decoration: InputDecoration(
-        labelText: label,
-        helperText: helperText,
-        prefixIcon: Icon(icon),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[300]!),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.blue, width: 2),
-        ),
-        filled: true,
-        fillColor: Colors.grey[50],
-      ),
-      validator: validator,
-    );
-  }
-
-  Widget _buildSwitchTile({
-    required LocalizationService loc,
-    required String title,
-    required String subtitle,
-    required bool value,
-    required IconData icon,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[200]!),
-      ),
-      child: SwitchListTile(
-        title: Row(
-          children: [
-            Icon(icon, size: 20, color: Colors.grey[700]),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(left: 32, top: 4),
-          child: Text(
-            subtitle,
-            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-          ),
-        ),
-        value: value,
-        onChanged: (value) {},
-        activeThumbColor: Colors.blue,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, left: 4),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          color: Colors.blue,
         ),
       ),
     );
   }
 
-  Widget _buildInfoBox(String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.info_outline, color: color, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                fontSize: 12,
-                color: color.withValues(alpha: 0.8),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTestSMSButton(LocalizationService loc) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: _isTestingSMS ? null : () => _testSMS(loc),
-        icon: _isTestingSMS
-            ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.send),
-        label: Text(_isTestingSMS ? loc.t('sending') : loc.t('test_sms_send')),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: Colors.green,
-          side: const BorderSide(color: Colors.green, width: 1.5),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSaveButton(LocalizationService loc) {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      child: AnimatedBuilder(
-        animation: _saveButtonController,
-        builder: (context, child) {
-          return Transform.scale(
-            scale: 1 + (_saveButtonController.value * 0.05),
-            child: SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton.icon(
-                onPressed: () => _saveSettings(loc),
-                icon: const Icon(Icons.save_rounded, size: 24),
-                label: Text(
-                  loc.t('save_settings'),
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  elevation: 4,
-                  shadowColor: Colors.blue.withValues(alpha: 0.5),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  void _startTestMode(LocalizationService loc) {
+  void _startTestMode() {
     final provider = Provider.of<SensorDataProvider>(context, listen: false);
     
-    Future.delayed(Duration.zero, () {
-      _generateTestData(provider, loc);
+    // Debug modunu aç
+    setState(() {
+      _debugMode = true;
+      _debugRefreshTimer = Timer.periodic(
+        const Duration(milliseconds: 500),
+        (_) => setState(() {}),
+      );
     });
     
-    _showSnackBar(loc.t('test_mode_started'), Colors.orange);
-  }
-
-  void _generateTestData(SensorDataProvider provider, LocalizationService loc) {
+    // Rastgele veri üret
     int count = 0;
-    Timer.periodic(const Duration(seconds: 2), (timer) {
-      if (!mounted || count >= 10) {
+    Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted || count >= 15) {
         timer.cancel();
-        if (mounted) {
-          _showSnackBar(loc.t('test_mode_completed'), Colors.teal);
-        }
         return;
       }
       
-      double heartRate = 60 + (40 * (0.5 + 0.5 * (count % 10) / 10));
-      double accX = -1 + 2 * ((count * 13) % 100) / 100;
-      double accY = -1 + 2 * ((count * 17) % 100) / 100;
-      double accZ = -1 + 2 * ((count * 19) % 100) / 100;
+      // Rastgele değerler
+      final random = Random();
+      double hr = 60 + random.nextDouble() * 40; // 60-100
+      double ax = -1 + random.nextDouble() * 2;  // -1 to 1
+      double ay = -1 + random.nextDouble() * 2;
+      double az = 0.5 + random.nextDouble() * 1; // 0.5 to 1.5 (yerçekimi)
+      
+      // Her 5. döngüde düşme simüle et
+      if (count == 5 || count == 10) {
+        ax = 2 + random.nextDouble() * 2; // 2-4 G
+        ay = 1.5 + random.nextDouble();
+        az = 2 + random.nextDouble();
+      }
       
       provider.updateSensorData(
-        heartRate: heartRate,
-        accX: accX,
-        accY: accY,
-        accZ: accZ,
+        heartRate: hr,
+        accX: ax,
+        accY: ay,
+        accZ: az,
       );
       
       count++;
     });
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🧪 Test modu başlatıldı! 15 saniye veri üretilecek.'),
+        backgroundColor: Colors.orange,
+      ),
+    );
   }
 }
