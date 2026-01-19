@@ -27,14 +27,50 @@ void main() async {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  late SensorDataProvider _sensorProvider;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    debugPrint('🔄 App Lifecycle: $state');
+    
+    if (state == AppLifecycleState.detached || state == AppLifecycleState.paused) {
+      // 🆕 Uygulama kapatılırken veya arka planda giderken
+      // Bluetooth bağlantısını tutmaya devam et ama paused durumunu göster
+      if (state == AppLifecycleState.detached) {
+        // Son anında bağlantıyı kapat
+        _sensorProvider.disconnectFromDevice();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => SensorDataProvider()),
+        ChangeNotifierProvider(create: (_) {
+          _sensorProvider = SensorDataProvider();
+          return _sensorProvider;
+        }),
         ChangeNotifierProvider(create: (_) => LocalizationService()),
       ],
       child: Consumer<LocalizationService>(
@@ -96,12 +132,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // 🆕 Bluetooth bağlantısını sürdür ama ekrandan çıkmayı allow et
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    debugPrint('Uygulama durumu: $state');
+    debugPrint('📱 MainScreen Lifecycle: $state');
     
     if (state == AppLifecycleState.paused) {
       debugPrint('⚠️ Uygulama arka planda - Sensör takibi devam ediyor');

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'dart:math';
 import 'dart:convert';
+import 'dart:async';
 import '../services/notification_service.dart';
 import '../services/emergency_service.dart';
 import '../models/sensor_record.dart';
@@ -16,6 +18,10 @@ class SensorDataProvider extends ChangeNotifier {
   // Bluetooth bağlantı durumu
   bool _isConnected = false;
   String _deviceName = '';
+  
+  // 🆕 Bluetooth cihaz ve subscription yönetimi
+  BluetoothDevice? _connectedDevice;
+  final List<StreamSubscription> _characteristicSubscriptions = [];
   
   // Sensör verileri
   double _heartRate = 0;
@@ -91,6 +97,131 @@ class SensorDataProvider extends ChangeNotifier {
     debugPrint('⚙️ Fall threshold değiştirildi: $value G');
     _saveHistoryData(); // Hemen kaydet
     notifyListeners();
+  }
+  
+  // 🆕 Bluetooth bağlantısını kur (App-level)
+  Future<void> connectToDevice(BluetoothDevice device) async {
+    try {
+      debugPrint('🔗 Cihaza bağlanılıyor: ${device.platformName}');
+      
+      await device.connect(timeout: const Duration(seconds: 15));
+      
+      _connectedDevice = device;
+      _isConnected = true;
+      _deviceName = device.platformName;
+      notifyListeners();
+      
+      debugPrint('✅ Cihaza başarıyla bağlandı: ${device.platformName}');
+      
+      await _discoverAndSubscribeToServices(device);
+      
+    } catch (e) {
+      debugPrint('❌ Bağlantı hatası: $e');
+      _isConnected = false;
+      _connectedDevice = null;
+      notifyListeners();
+    }
+  }
+  
+  // 🆕 Servisleri keşfet ve subscription'ları kur
+  Future<void> _discoverAndSubscribeToServices(BluetoothDevice device) async {
+    try {
+      List<BluetoothService> services = await device.discoverServices();
+      
+      for (var service in services) {
+        for (var characteristic in service.characteristics) {
+          if (characteristic.properties.notify) {
+            await characteristic.setNotifyValue(true);
+            
+            final subscription = characteristic.onValueReceived.listen((value) {
+              _parseBluetoothData(value);
+            });
+            _characteristicSubscriptions.add(subscription);
+            
+            debugPrint('✅ Notify aktif: ${characteristic.uuid}');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Servis keşfi hatası: $e');
+    }
+  }
+  
+  // 🆕 Bluetooth verisini parse et
+  void _parseBluetoothData(List<int> rawData) {
+    try {
+      String dataString = utf8.decode(rawData).trim();
+      
+      debugPrint('📥 RAW DATA: "$dataString"');
+      
+      if (dataString.isEmpty) return;
+      
+      // Format: "HR:75,AX:-0.12,AY:0.98,AZ:0.05"
+      Map<String, double> parsed = {};
+      List<String> parts = dataString.split(',');
+      
+      for (var part in parts) {
+        part = part.trim();
+        if (part.isEmpty) continue;
+        
+        List<String> kv = part.split(':');
+        if (kv.length == 2) {
+          String key = kv[0].trim().toUpperCase();
+          double? value = double.tryParse(kv[1].trim());
+          
+          if (value != null) {
+            parsed[key] = value;
+          }
+        }
+      }
+      
+      // Provider'a gönder
+      if (parsed.isNotEmpty) {
+        updateSensorData(
+          heartRate: parsed['HR'],
+          accX: parsed['AX'],
+          accY: parsed['AY'],
+          accZ: parsed['AZ'],
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Parse hatası: $e');
+    }
+  }
+  
+  // 🆕 Bluetooth bağlantısını kapat (App kapatılırken)
+  Future<void> disconnectFromDevice() async {
+    try {
+      if (_connectedDevice != null) {
+        debugPrint('🔌 Cihazdan ayrılıyor...');
+        
+        // Subscription'ları temizle
+        for (var sub in _characteristicSubscriptions) {
+          await sub.cancel();
+        }
+        _characteristicSubscriptions.clear();
+        
+        // Bağlantıyı kapat
+        await _connectedDevice!.disconnect();
+        
+        _connectedDevice = null;
+        _isConnected = false;
+        _deviceName = '';
+        notifyListeners();
+        
+        debugPrint('✅ Cihazdan ayrılındı');
+      }
+    } catch (e) {
+      debugPrint('❌ Ayrılma hatası: $e');
+    }
+  }
+  
+  // 🆕 Provider dispose edilirken çağrılacak
+  void disposeBluetoothConnection() {
+    // Henüz ayrılmadıysa ayrıl
+    if (_isConnected) {
+      disconnectFromDevice();
+    }
   }
   
   // Veri yükleme

@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import '../providers/sensor_data_provider.dart';
 import '../services/localization_service.dart';
 import 'dart:async';
-import 'dart:convert';
 
 class BluetoothScreen extends StatefulWidget {
   const BluetoothScreen({super.key});
@@ -89,122 +88,25 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
 
   Future<void> _connectToDevice(BluetoothDevice device) async {
     final loc = Provider.of<LocalizationService>(context, listen: false);
+    final provider = Provider.of<SensorDataProvider>(context, listen: false);
     
     try {
       _showSnackBar(loc.t('connecting'), Colors.blue);
-      
-      await device.connect(timeout: const Duration(seconds: 15));
       
       setState(() {
         _connectedDevice = device;
         _dataCount = 0;
       });
       
-      if (!mounted) return;
+      // 🆕 Provider'ı kullanarak bağlantıyı yönet
+      await provider.connectToDevice(device);
       
-      final provider = Provider.of<SensorDataProvider>(context, listen: false);
-      provider.updateConnectionStatus(true, device.platformName);
+      if (!mounted) return;
       
       _showSnackBar('${loc.t('connected_to')}: ${device.platformName}', Colors.green);
       
-      await _discoverServices(device);
-      
     } catch (e) {
       _showSnackBar('${loc.t('connection_error')}: $e', Colors.red);
-    }
-  }
-
-  Future<void> _discoverServices(BluetoothDevice device) async {
-    try {
-      List<BluetoothService> services = await device.discoverServices();
-      
-      for (var service in services) {
-        for (var characteristic in service.characteristics) {
-          if (characteristic.properties.notify) {
-            await characteristic.setNotifyValue(true);
-            
-            // 🆕 Subscription'ı kaydet ve düzgün dinle
-            final subscription = characteristic.onValueReceived.listen((value) {
-              _parseStringData(value);
-            });
-            _characteristicSubscriptions.add(subscription);
-            
-            debugPrint('✅ Notify aktif: ${characteristic.uuid}');
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('Servis keşfi hatası: $e');
-    }
-  }
-
-  // ESP32 STRING gönderiyor!
-  // Format: "HR:75,AX:-0.12,AY:0.98,AZ:0.05"
-  void _parseStringData(List<int> rawData) {
-    try {
-      // 1. Byte array'i UTF-8 string'e çevir
-      String dataString = utf8.decode(rawData).trim();
-      
-      setState(() {
-        _lastRawData = dataString;
-        _lastDataTime = DateTime.now();
-        _dataCount++; // 🆕 Veri sayacını artır
-      });
-      
-      debugPrint('📥 RAW DATA #$_dataCount: "$dataString"');
-      
-      // 2. Boş veri kontrolü
-      if (dataString.isEmpty) {
-        setState(() => _parseStatus = '⚠️ Boş veri');
-        return;
-      }
-      
-      // 3. Parse et: "HR:75,AX:-0.12,AY:0.98,AZ:0.05"
-      Map<String, double> parsed = {};
-      List<String> parts = dataString.split(',');
-      
-      for (var part in parts) {
-        part = part.trim();
-        if (part.isEmpty) continue;
-        
-        List<String> kv = part.split(':');
-        if (kv.length == 2) {
-          String key = kv[0].trim().toUpperCase();
-          double? value = double.tryParse(kv[1].trim());
-          
-          if (value != null) {
-            parsed[key] = value;
-            debugPrint('  ✅ $key = $value');
-          } else {
-            debugPrint('  ❌ Parse edilemedi: $part');
-          }
-        }
-      }
-      
-      // 4. Provider'a gönder
-      if (parsed.isNotEmpty && mounted) {
-        final provider = Provider.of<SensorDataProvider>(context, listen: false);
-        
-        provider.updateSensorData(
-          heartRate: parsed['HR'],
-          accX: parsed['AX'],
-          accY: parsed['AY'],
-          accZ: parsed['AZ'],
-        );
-        
-        setState(() {
-          _parseStatus = '✅ #$_dataCount HR=${parsed['HR']?.toStringAsFixed(0) ?? "-"}, '
-              'AX=${parsed['AX']?.toStringAsFixed(2) ?? "-"}, '
-              'AY=${parsed['AY']?.toStringAsFixed(2) ?? "-"}, '
-              'AZ=${parsed['AZ']?.toStringAsFixed(2) ?? "-"}';
-        });
-      } else {
-        setState(() => _parseStatus = '⚠️ Parse sonucu boş');
-      }
-      
-    } catch (e) {
-      debugPrint('❌ Parse hatası: $e');
-      setState(() => _parseStatus = '❌ Hata: $e');
     }
   }
 
@@ -212,13 +114,8 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
     final loc = Provider.of<LocalizationService>(context, listen: false);
     
     if (_connectedDevice != null) {
-      // 🆕 Önce subscription'ları temizle
-      for (var sub in _characteristicSubscriptions) {
-        await sub.cancel();
-      }
+      // 🆕 Cleanup sadece UI state'i için - gerçek Bluetooth yönetimi Provider'da
       _characteristicSubscriptions.clear();
-      
-      await _connectedDevice!.disconnect();
       
       setState(() {
         _connectedDevice = null;
@@ -227,11 +124,6 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
         _parseStatus = '';
         _dataCount = 0;
       });
-      
-      if (!mounted) return;
-      
-      final provider = Provider.of<SensorDataProvider>(context, listen: false);
-      provider.updateConnectionStatus(false, '');
       
       _showSnackBar(loc.t('connection_lost'), Colors.orange);
     }
