@@ -3,6 +3,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import '../providers/sensor_data_provider.dart';
+import '../services/localization_service.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -19,10 +20,14 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
   BluetoothDevice? _connectedDevice;
   StreamSubscription? _scanSubscription;
   
+  // 🆕 Characteristic subscription'ları takip et
+  final List<StreamSubscription> _characteristicSubscriptions = [];
+  
   // DEBUG bilgileri
   String _lastRawData = '';
   DateTime? _lastDataTime;
   String _parseStatus = '';
+  int _dataCount = 0; // 🆕 Kaç veri geldiğini say
 
   @override
   void initState() {
@@ -33,6 +38,11 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
   @override
   void dispose() {
     _scanSubscription?.cancel();
+    // 🆕 Tüm characteristic subscription'larını temizle
+    for (var sub in _characteristicSubscriptions) {
+      sub.cancel();
+    }
+    _characteristicSubscriptions.clear();
     super.dispose();
   }
 
@@ -78,13 +88,16 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
   }
 
   Future<void> _connectToDevice(BluetoothDevice device) async {
+    final loc = Provider.of<LocalizationService>(context, listen: false);
+    
     try {
-      _showSnackBar('Bağlanıyor...', Colors.blue);
+      _showSnackBar(loc.t('connecting'), Colors.blue);
       
       await device.connect(timeout: const Duration(seconds: 15));
       
       setState(() {
         _connectedDevice = device;
+        _dataCount = 0;
       });
       
       if (!mounted) return;
@@ -92,12 +105,12 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
       final provider = Provider.of<SensorDataProvider>(context, listen: false);
       provider.updateConnectionStatus(true, device.platformName);
       
-      _showSnackBar('Bağlandı: ${device.platformName}', Colors.green);
+      _showSnackBar('${loc.t('connected_to')}: ${device.platformName}', Colors.green);
       
       await _discoverServices(device);
       
     } catch (e) {
-      _showSnackBar('Bağlantı hatası: $e', Colors.red);
+      _showSnackBar('${loc.t('connection_error')}: $e', Colors.red);
     }
   }
 
@@ -110,10 +123,11 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
           if (characteristic.properties.notify) {
             await characteristic.setNotifyValue(true);
             
-            // ✅ lastValueStream kullan
-            characteristic.lastValueStream.listen((value) {
+            // 🆕 Subscription'ı kaydet ve düzgün dinle
+            final subscription = characteristic.onValueReceived.listen((value) {
               _parseStringData(value);
             });
+            _characteristicSubscriptions.add(subscription);
             
             debugPrint('✅ Notify aktif: ${characteristic.uuid}');
           }
@@ -124,7 +138,7 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
     }
   }
 
-  // ✅ DÜZELTME: ESP32 STRING gönderiyor!
+  // ESP32 STRING gönderiyor!
   // Format: "HR:75,AX:-0.12,AY:0.98,AZ:0.05"
   void _parseStringData(List<int> rawData) {
     try {
@@ -134,9 +148,10 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
       setState(() {
         _lastRawData = dataString;
         _lastDataTime = DateTime.now();
+        _dataCount++; // 🆕 Veri sayacını artır
       });
       
-      debugPrint('📥 RAW DATA: "$dataString"');
+      debugPrint('📥 RAW DATA #$_dataCount: "$dataString"');
       
       // 2. Boş veri kontrolü
       if (dataString.isEmpty) {
@@ -178,7 +193,7 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
         );
         
         setState(() {
-          _parseStatus = '✅ HR=${parsed['HR']?.toStringAsFixed(0) ?? "-"}, '
+          _parseStatus = '✅ #$_dataCount HR=${parsed['HR']?.toStringAsFixed(0) ?? "-"}, '
               'AX=${parsed['AX']?.toStringAsFixed(2) ?? "-"}, '
               'AY=${parsed['AY']?.toStringAsFixed(2) ?? "-"}, '
               'AZ=${parsed['AZ']?.toStringAsFixed(2) ?? "-"}';
@@ -194,7 +209,15 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
   }
 
   Future<void> _disconnect() async {
+    final loc = Provider.of<LocalizationService>(context, listen: false);
+    
     if (_connectedDevice != null) {
+      // 🆕 Önce subscription'ları temizle
+      for (var sub in _characteristicSubscriptions) {
+        await sub.cancel();
+      }
+      _characteristicSubscriptions.clear();
+      
       await _connectedDevice!.disconnect();
       
       setState(() {
@@ -202,6 +225,7 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
         _lastRawData = '';
         _lastDataTime = null;
         _parseStatus = '';
+        _dataCount = 0;
       });
       
       if (!mounted) return;
@@ -209,7 +233,7 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
       final provider = Provider.of<SensorDataProvider>(context, listen: false);
       provider.updateConnectionStatus(false, '');
       
-      _showSnackBar('Bağlantı kesildi', Colors.orange);
+      _showSnackBar(loc.t('connection_lost'), Colors.orange);
     }
   }
 
@@ -226,20 +250,22 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = Provider.of<LocalizationService>(context);
+    
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Bluetooth Bağlantısı'),
+        title: Text(loc.t('bluetooth_connection')),
         centerTitle: true,
       ),
       body: Column(
         children: [
           // Bağlı cihaz kartı
           if (_connectedDevice != null)
-            _buildConnectedCard(),
+            _buildConnectedCard(loc),
           
           // DEBUG: Ham veri kutusu
           if (_connectedDevice != null)
-            _buildDebugBox(),
+            _buildDebugBox(loc),
           
           // Tarama butonu
           Padding(
@@ -249,7 +275,7 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
               child: ElevatedButton.icon(
                 onPressed: _isScanning ? _stopScan : _startScan,
                 icon: Icon(_isScanning ? Icons.stop : Icons.search),
-                label: Text(_isScanning ? 'Aramayı Durdur' : 'Cihaz Ara'),
+                label: Text(_isScanning ? loc.t('stop_scanning') : loc.t('scan_devices')),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.all(16),
                 ),
@@ -258,14 +284,14 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
           ),
           
           if (_isScanning)
-            const Padding(
-              padding: EdgeInsets.all(16),
+            Padding(
+              padding: const EdgeInsets.all(16),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(width: 16),
-                  Text('Cihazlar aranıyor...'),
+                  const CircularProgressIndicator(),
+                  const SizedBox(width: 16),
+                  Text(loc.t('scanning')),
                 ],
               ),
             ),
@@ -273,15 +299,15 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
           // Cihaz listesi
           Expanded(
             child: _scanResults.isEmpty
-                ? _buildEmptyState()
-                : _buildDeviceList(),
+                ? _buildEmptyState(loc)
+                : _buildDeviceList(loc),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildConnectedCard() {
+  Widget _buildConnectedCard(LocalizationService loc) {
     return Container(
       margin: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -292,8 +318,8 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
       ),
       child: ListTile(
         leading: const Icon(Icons.bluetooth_connected, color: Colors.white, size: 36),
-        title: const Text('Bağlı', 
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        title: Text(loc.t('connected'), 
+          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
         subtitle: Text(_connectedDevice!.platformName,
           style: const TextStyle(color: Colors.white70)),
         trailing: IconButton(
@@ -305,7 +331,7 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
   }
 
   // DEBUG kutusu - canlı veri gösterimi
-  Widget _buildDebugBox() {
+  Widget _buildDebugBox(LocalizationService loc) {
     final isLive = _lastDataTime != null && 
         DateTime.now().difference(_lastDataTime!).inSeconds < 3;
     
@@ -344,6 +370,19 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
                 ),
               ),
               const Spacer(),
+              // 🆕 Toplam veri sayısı
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'Toplam: $_dataCount',
+                  style: const TextStyle(color: Colors.blue, fontSize: 11),
+                ),
+              ),
+              const SizedBox(width: 8),
               if (_lastDataTime != null)
                 Text(
                   '${DateTime.now().difference(_lastDataTime!).inSeconds}s önce',
@@ -381,24 +420,24 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(LocalizationService loc) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.bluetooth_searching, size: 64, color: Colors.grey.shade400),
           const SizedBox(height: 16),
-          Text('Henüz cihaz bulunamadı',
+          Text(loc.t('no_devices_found'),
             style: TextStyle(color: Colors.grey.shade600)),
           const SizedBox(height: 8),
-          Text('Yukarıdaki butona basarak arama yapın',
+          Text(loc.t('tap_to_scan'),
             style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
         ],
       ),
     );
   }
 
-  Widget _buildDeviceList() {
+  Widget _buildDeviceList(LocalizationService loc) {
     return ListView.builder(
       itemCount: _scanResults.length,
       itemBuilder: (context, index) {
@@ -416,16 +455,28 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
               color: isConnected ? Colors.green : _getSignalColor(rssi),
             ),
             title: Text(
-              device.platformName.isEmpty ? 'Bilinmeyen Cihaz' : device.platformName,
-              style: const TextStyle(fontWeight: FontWeight.w500),
+              // Cihaz ismi boşsa hem 'Bilinmeyen Cihaz' yaz hem de ID'yi göster
+              device.platformName.isNotEmpty 
+                  ? device.platformName 
+                  : "${loc.t('unknown_device')} (${device.remoteId.str})",
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            subtitle: Text('Sinyal: $rssi dBm'),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // MAC Adresi (veya iOS için UUID) burada gösterilir
+                Text("ID: ${device.remoteId.str}", 
+                    style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
+                Text('${loc.t('signal')}: $rssi dBm'),
+              ],
+            ),
+            isThreeLine: true, // Alt alta 3 satır için yer açar
             trailing: ElevatedButton(
               onPressed: isConnected ? _disconnect : () => _connectToDevice(device),
               style: ElevatedButton.styleFrom(
                 backgroundColor: isConnected ? Colors.red : null,
               ),
-              child: Text(isConnected ? 'Kes' : 'Bağlan'),
+              child: Text(isConnected ? loc.t('disconnect') : loc.t('connect')),
             ),
           ),
         );

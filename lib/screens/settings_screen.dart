@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'dart:async';
 import 'dart:math';
 import '../providers/sensor_data_provider.dart';
+import '../services/localization_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -19,7 +20,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _caregiverNameController;
   late TextEditingController _caregiverPhoneController;
 
-  // 🆕 DEBUG MODE
+  // DEBUG MODE
   bool _debugMode = false;
   Timer? _debugRefreshTimer;
 
@@ -52,7 +53,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
-  void _saveSettings() {
+  void _saveSettings(LocalizationService loc) {
     if (_formKey.currentState!.validate()) {
       final provider = Provider.of<SensorDataProvider>(context, listen: false);
       
@@ -63,8 +64,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
       
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ Ayarlar kaydedildi!'),
+        SnackBar(
+          content: Text('✅ ${loc.t('settings_saved')}'),
           backgroundColor: Colors.green,
         ),
       );
@@ -73,18 +74,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = Provider.of<LocalizationService>(context);
+    
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Ayarlar'),
+        title: Text(loc.t('settings')),
         centerTitle: true,
         actions: [
-          // 🆕 DEBUG MODE TOGGLE
+          // DEBUG MODE TOGGLE
           IconButton(
             icon: Icon(
               _debugMode ? Icons.bug_report : Icons.bug_report_outlined,
               color: _debugMode ? Colors.yellow : null,
             ),
-            tooltip: 'Debug Modu',
+            tooltip: loc.t('test_mode'),
             onPressed: () {
               setState(() {
                 _debugMode = !_debugMode;
@@ -109,16 +112,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 🆕 DEBUG PANEL (EN ÜSTTE)
-              if (_debugMode) _buildDebugPanel(),
+              // DEBUG PANEL (EN ÜSTTE)
+              if (_debugMode) _buildDebugPanel(loc),
               
-              // 🆕 DÜŞME EŞİĞİ AYARI (SLIDER)
-              _buildFallThresholdSection(),
+              // DÜŞME EŞİĞİ AYARI (SLIDER)
+              _buildFallThresholdSection(loc),
               
               const SizedBox(height: 16),
               
               // Kalp Atışı Eşikleri
-              _buildSectionTitle('Kalp Atışı Eşikleri'),
+              _buildSectionTitle(loc.t('heart_rate_thresholds')),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -127,15 +130,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       TextFormField(
                         controller: _minHeartRateController,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Minimum Nabız (bpm)',
-                          prefixIcon: Icon(Icons.favorite_border),
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          labelText: loc.t('minimum_heart_rate'),
+                          prefixIcon: const Icon(Icons.favorite_border),
+                          border: const OutlineInputBorder(),
                         ),
                         validator: (value) {
-                          if (value == null || value.isEmpty) return 'Değer girin';
+                          if (value == null || value.isEmpty) return loc.t('please_enter_value');
                           final n = int.tryParse(value);
-                          if (n == null || n < 30 || n > 100) return '30-100 arası';
+                          if (n == null || n < 30 || n > 100) return '${loc.t('enter_value_between')} 30-100';
                           return null;
                         },
                       ),
@@ -143,15 +146,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       TextFormField(
                         controller: _maxHeartRateController,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Maximum Nabız (bpm)',
-                          prefixIcon: Icon(Icons.favorite),
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          labelText: loc.t('maximum_heart_rate'),
+                          prefixIcon: const Icon(Icons.favorite),
+                          border: const OutlineInputBorder(),
                         ),
                         validator: (value) {
-                          if (value == null || value.isEmpty) return 'Değer girin';
+                          if (value == null || value.isEmpty) return loc.t('please_enter_value');
                           final n = int.tryParse(value);
-                          if (n == null || n < 100 || n > 200) return '100-200 arası';
+                          if (n == null || n < 100 || n > 200) return '${loc.t('enter_value_between')} 100-200';
                           return null;
                         },
                       ),
@@ -162,23 +165,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 24),
               
               // Hareketsizlik Ayarı
-              _buildSectionTitle('Hareketsizlik Tespiti'),
+              _buildSectionTitle(loc.t('inactivity_detection')),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: TextFormField(
                     controller: _inactivityTimeController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Hareketsizlik Süresi (dakika)',
-                      prefixIcon: Icon(Icons.timer),
-                      border: OutlineInputBorder(),
-                      helperText: 'Bu süre hareketsizlik olursa alarm verilir',
+                    decoration: InputDecoration(
+                      labelText: loc.t('inactivity_timeout'),
+                      prefixIcon: const Icon(Icons.timer),
+                      border: const OutlineInputBorder(),
+                      helperText: loc.t('inactivity_timeout_help'),
                     ),
                     validator: (value) {
-                      if (value == null || value.isEmpty) return 'Değer girin';
+                      if (value == null || value.isEmpty) return loc.t('please_enter_value');
                       final n = int.tryParse(value);
-                      if (n == null || n < 5 || n > 120) return '5-120 arası';
+                      if (n == null || n < 5 || n > 120) return '${loc.t('enter_value_between')} 5-120';
                       return null;
                     },
                   ),
@@ -187,7 +190,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 24),
               
               // Bakıcı Bilgileri
-              _buildSectionTitle('Bakıcı/Acil Durum İletişim'),
+              _buildSectionTitle(loc.t('emergency_contact')),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -195,21 +198,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       TextFormField(
                         controller: _caregiverNameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Bakıcı Adı',
-                          prefixIcon: Icon(Icons.person),
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          labelText: loc.t('caregiver_name'),
+                          prefixIcon: const Icon(Icons.person),
+                          border: const OutlineInputBorder(),
                         ),
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _caregiverPhoneController,
                         keyboardType: TextInputType.phone,
-                        decoration: const InputDecoration(
-                          labelText: 'Telefon Numarası',
-                          prefixIcon: Icon(Icons.phone),
-                          border: OutlineInputBorder(),
-                          helperText: 'Acil durumlarda aranacak',
+                        decoration: InputDecoration(
+                          labelText: loc.t('phone_number'),
+                          prefixIcon: const Icon(Icons.phone),
+                          border: const OutlineInputBorder(),
+                          helperText: loc.t('phone_help'),
                         ),
                       ),
                     ],
@@ -223,9 +226,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton.icon(
-                  onPressed: _saveSettings,
+                  onPressed: () => _saveSettings(loc),
                   icon: const Icon(Icons.save),
-                  label: const Text('Ayarları Kaydet', style: TextStyle(fontSize: 16)),
+                  label: Text(loc.t('save_settings'), style: const TextStyle(fontSize: 16)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,
                     foregroundColor: Colors.white,
@@ -239,9 +242,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 width: double.infinity,
                 height: 50,
                 child: OutlinedButton.icon(
-                  onPressed: _startTestMode,
+                  onPressed: () => _startTestMode(loc),
                   icon: const Icon(Icons.bug_report),
-                  label: const Text('Test Modu Başlat'),
+                  label: Text(loc.t('start_test_mode')),
                   style: OutlinedButton.styleFrom(foregroundColor: Colors.orange),
                 ),
               ),
@@ -253,8 +256,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // 🆕 DEBUG PANEL - CANLI SENSÖR DEĞERLERİ
-  Widget _buildDebugPanel() {
+  // DEBUG PANEL - CANLI SENSÖR DEĞERLERİ
+  Widget _buildDebugPanel(LocalizationService loc) {
     return Consumer<SensorDataProvider>(
       builder: (context, provider, child) {
         final total = provider.totalAcceleration;
@@ -293,7 +296,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      isOverThreshold ? '⚠️ DÜŞME TESPİT!' : '✅ NORMAL',
+                      isOverThreshold ? '⚠️ ${loc.t('fall_detected')}' : '✅ NORMAL',
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -309,9 +312,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       child: Text(
                         timeSince < 0 
-                            ? '⚪ BEKLENİYOR' 
+                            ? '⚪ ${loc.t('loading')}' 
                             : timeSince < 3 
-                                ? '🟢 CANLI' 
+                                ? '🟢 LIVE' 
                                 : '🟡 ${timeSince}s',
                         style: const TextStyle(color: Colors.white, fontSize: 11),
                       ),
@@ -325,20 +328,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-                    _debugRow('KALP', '${provider.heartRate.toStringAsFixed(0)} bpm', Colors.red),
+                    _debugRow(loc.t('heart_rate'), '${provider.heartRate.toStringAsFixed(0)} ${loc.t('bpm')}', Colors.red),
                     const SizedBox(height: 6),
                     _debugRow('ACC X', provider.accelerometerX.toStringAsFixed(3), Colors.orange),
                     _debugRow('ACC Y', provider.accelerometerY.toStringAsFixed(3), Colors.yellow),
                     _debugRow('ACC Z', provider.accelerometerZ.toStringAsFixed(3), Colors.cyan),
                     const Divider(color: Colors.grey, height: 20),
                     _debugRow(
-                      'TOPLAM', 
+                      'TOTAL', 
                       '${total.toStringAsFixed(3)} G', 
                       isOverThreshold ? Colors.red : Colors.green,
                       bold: true,
                       large: true,
                     ),
-                    _debugRow('EŞİK', '${threshold.toStringAsFixed(1)} G', Colors.purple),
+                    _debugRow('THRESHOLD', '${threshold.toStringAsFixed(1)} G', Colors.purple),
                   ],
                 ),
               ),
@@ -355,7 +358,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Row(
         children: [
           SizedBox(
-            width: 70,
+            width: 90,
             child: Text(
               label,
               style: TextStyle(color: color, fontFamily: 'monospace', fontSize: 13),
@@ -378,8 +381,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // 🆕 DÜŞME EŞİĞİ SLIDER
-  Widget _buildFallThresholdSection() {
+  // DÜŞME EŞİĞİ SLIDER
+  Widget _buildFallThresholdSection(LocalizationService loc) {
     return Consumer<SensorDataProvider>(
       builder: (context, provider, child) {
         final currentAcc = provider.totalAcceleration;
@@ -397,9 +400,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     Icon(Icons.speed, color: Colors.purple.shade700, size: 24),
                     const SizedBox(width: 8),
-                    const Text(
-                      'Düşme Eşiği (Fall Threshold)',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    Text(
+                      'Fall Threshold',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -436,7 +439,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Şu an: ${currentAcc.toStringAsFixed(2)} G (${percentage.toStringAsFixed(0)}%)',
+                        '${loc.t('accelerometer_data')}: ${currentAcc.toStringAsFixed(2)} G (${percentage.toStringAsFixed(0)}%)',
                         style: TextStyle(
                           color: percentage > 100 ? Colors.red : Colors.green.shade700,
                           fontWeight: FontWeight.w500,
@@ -473,9 +476,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _presetButton('Hassas\n1.5G', 1.5, provider),
+                    _presetButton('Sensitive\n1.5G', 1.5, provider),
                     _presetButton('Normal\n2.5G', 2.5, provider),
-                    _presetButton('Düşük\n3.5G', 3.5, provider),
+                    _presetButton('Low\n3.5G', 3.5, provider),
                   ],
                 ),
                 
@@ -490,11 +493,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       Icon(Icons.info_outline, size: 18, color: Colors.purple.shade700),
                       const SizedBox(width: 8),
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'Düşük eşik = daha hassas (yanlış alarm riski)\n'
-                          'Yüksek eşik = daha az hassas',
-                          style: TextStyle(fontSize: 11),
+                          loc.isEnglish 
+                            ? 'Low threshold = more sensitive (false alarm risk)\nHigh threshold = less sensitive'
+                            : 'Düşük eşik = daha hassas (yanlış alarm riski)\nYüksek eşik = daha az hassas',
+                          style: const TextStyle(fontSize: 11),
                         ),
                       ),
                     ],
@@ -537,7 +541,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _startTestMode() {
+  void _startTestMode(LocalizationService loc) {
     final provider = Provider.of<SensorDataProvider>(context, listen: false);
     
     // Debug modunu aç
@@ -582,8 +586,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
     
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('🧪 Test modu başlatıldı! 15 saniye veri üretilecek.'),
+      SnackBar(
+        content: Text('🧪 ${loc.t('test_mode_started')}'),
         backgroundColor: Colors.orange,
       ),
     );

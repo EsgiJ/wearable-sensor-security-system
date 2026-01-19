@@ -46,6 +46,10 @@ dependencies:
   
   # Materyal design icons
   cupertino_icons: ^1.0.2
+  telephony:
+    git:
+      url: https://github.com/shounakmulay/Telephony.git
+      ref: develop
 
 dev_dependencies:
   flutter_test:

@@ -50,15 +50,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
             
             // Kalp atışı grafiği
             if (filteredRecords.isNotEmpty) ...[
-              _buildSectionTitle(loc.t('Heart Rate Chart'), loc),
+              _buildSectionTitle(loc.t('heart_rate_chart'), loc),
               _buildHeartRateChart(filteredRecords),
               const SizedBox(height: 24),
             ],
             
             // Alarm listesi
-            _buildSectionTitle(loc.t('Alarm History'), loc),
+            _buildSectionTitle(loc.t('alarm_history'), loc),
             if (filteredAlarms.isEmpty)
-              _buildEmptyState(loc.t('No alarms recorded'))
+              _buildEmptyState(loc.t('no_alarms'))
             else
               ...filteredAlarms.map((alarm) => _buildAlarmCard(alarm, loc)),
           ],
@@ -111,13 +111,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Row(
       children: [
         Expanded(child: _buildStatCard('📊 ${loc.t('average')}', 
-          '${avgHeartRate.toInt()} bpm', Colors.blue)),
+          '${avgHeartRate.toInt()} ${loc.t('bpm')}', Colors.blue)),
         const SizedBox(width: 8),
         Expanded(child: _buildStatCard('📈 ${loc.t('maximum')}', 
-          '${maxHeartRate.toInt()} bpm', Colors.red)),
+          '${maxHeartRate.toInt()} ${loc.t('bpm')}', Colors.red)),
         const SizedBox(width: 8),
         Expanded(child: _buildStatCard('📉 ${loc.t('minimum')}', 
-          '${minHeartRate.toInt()} bpm', Colors.green)),
+          '${minHeartRate.toInt()} ${loc.t('bpm')}', Colors.green)),
       ],
     );
   }
@@ -199,37 +199,43 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget _buildAlarmCard(alarm, LocalizationService loc) {
     IconData icon;
     Color color;
+    String localizedMessage;
     
     switch (alarm.type) {
       case 'fall':
         icon = Icons.warning;
         color = Colors.red;
+        localizedMessage = loc.t('fall_detected');
         break;
       case 'heart_rate':
         icon = Icons.favorite;
         color = Colors.orange;
+        localizedMessage = loc.t('abnormal_heart_rate');
         break;
       case 'inactivity':
         icon = Icons.airline_seat_recline_normal;
         color = Colors.amber;
+        localizedMessage = loc.t('inactivity_detected');
         break;
       case 'manual':
         icon = Icons.emergency;
         color = Colors.red[900]!;
+        localizedMessage = loc.t('manual_emergency');
         break;
       default:
         icon = Icons.info;
         color = Colors.blue;
+        localizedMessage = alarm.message;
     }
     
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: Icon(icon, color: color, size: 32),
-        title: Text(alarm.message, style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(localizedMessage, style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text(DateFormat('dd/MM/yyyy HH:mm').format(alarm.timestamp)),
         trailing: alarm.heartRate != null 
-          ? Text('${alarm.heartRate!.toInt()} bpm', 
+          ? Text('${alarm.heartRate!.toInt()} ${loc.t('bpm')}', 
               style: const TextStyle(fontWeight: FontWeight.bold))
           : null,
       ),

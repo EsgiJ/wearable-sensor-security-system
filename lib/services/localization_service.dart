@@ -119,6 +119,7 @@ final Map<String, Map<String, String>> _translations = {
     'connecting': 'Connecting...',
     'connected_to': 'Connected to',
     'connection_lost': 'Connection lost',
+    'connection_error': 'Connection error',
     
     // Settings Screen
     'heart_rate_thresholds': 'Heart Rate Thresholds',
@@ -233,7 +234,6 @@ final Map<String, Map<String, String>> _translations = {
     
     // Errors
     'error': 'Error',
-    'connection_error': 'Connection error',
     'scan_error': 'Scan error',
     'permission_denied': 'Permission denied',
     'bluetooth_off': 'Bluetooth is off',
@@ -316,6 +316,7 @@ final Map<String, Map<String, String>> _translations = {
     'connecting': 'Bağlanıyor...',
     'connected_to': 'Bağlandı',
     'connection_lost': 'Bağlantı kesildi',
+    'connection_error': 'Bağlantı hatası',
     
     // Settings Screen
     'heart_rate_thresholds': 'Kalp Atışı Eşikleri',
@@ -430,7 +431,6 @@ final Map<String, Map<String, String>> _translations = {
     
     // Errors
     'error': 'Hata',
-    'connection_error': 'Bağlantı hatası',
     'scan_error': 'Tarama hatası',
     'permission_denied': 'İzin reddedildi',
     'bluetooth_off': 'Bluetooth kapalı',

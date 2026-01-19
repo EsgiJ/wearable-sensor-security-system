@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:telephony/telephony.dart';
 
 class EmergencyService {
+  static final Telephony _telephony = Telephony.instance;
   
   // Bakıcı bilgilerini kaydet
   static Future<void> saveCaregiverInfo({
@@ -72,7 +74,18 @@ class EmergencyService {
     return 'https://www.google.com/maps?q=${position.latitude},${position.longitude}';
   }
   
-  // Acil durum SMS'i gönder
+  // 🆕 SMS izni kontrolü
+  static Future<bool> requestSmsPermission() async {
+    try {
+      final bool? result = await _telephony.requestPhoneAndSmsPermissions;
+      return result ?? false;
+    } catch (e) {
+      debugPrint('❌ SMS izni hatası: $e');
+      return false;
+    }
+  }
+  
+  // 🆕 Otomatik SMS gönder (Gelişmiş Arka Plan Gönderimi)
   static Future<bool> sendEmergencySMS({
     required String emergencyType,
     Position? location,
@@ -80,45 +93,41 @@ class EmergencyService {
     try {
       final caregiverInfo = await getCaregiverInfo();
       final phone = caregiverInfo['phone'] ?? '';
+      if (phone.isEmpty) return false;
+
+      String googleMapsLink = location != null 
+          ? "https://www.google.com/maps/search/?api=1&query=${location.latitude},${location.longitude}"
+          : "Konum alinmadi";
+
+      String message = 'ACIL DURUM: $emergencyType\nKonum: $googleMapsLink';
+
+      // ÖNEMLİ: İzinleri al ve sonucun gelmesini bekle
+      bool? permissionsGranted = await _telephony.requestPhoneAndSmsPermissions;
       
-      if (phone.isEmpty) {
-        debugPrint('❌ Bakıcı telefon numarası kayıtlı değil');
-        return false;
+      // Eğer izin verilmişse (true) DOĞRUDAN göndermeyi dene
+      if (permissionsGranted == true) {
+        debugPrint('🚀 ARKA PLAN GÖNDERİMİ BAŞLADI...');
+        
+        await _telephony.sendSms(
+          to: phone,
+          message: message,
+          // StatusListener'ı siliyoruz çünkü bazen akışı bekletip hataya düşürebilir
+        );
+        
+        debugPrint('✅ ARKA PLAN SMS KOMUTU GİTTİ!');
+        return true; 
       }
-      
-      // SMS mesajını oluştur
-      String message = '🚨 ACİL DURUM: $emergencyType\n';
-      message += 'Zaman: ${DateTime.now().toString().substring(0, 16)}\n';
-      
-      if (location != null) {
-        message += 'Konum: ${getGoogleMapsLink(location)}\n';
-        message += 'Lat: ${location.latitude.toStringAsFixed(6)}\n';
-        message += 'Long: ${location.longitude.toStringAsFixed(6)}';
-      } else {
-        message += 'Konum bilgisi alınamadı';
-      }
-      
-      debugPrint('📱 SMS gönderiliyor: $phone');
-      debugPrint('💬 Mesaj: $message');
-      
-      // SMS URI oluştur (hem Android hem iOS)
-      final Uri smsUri = Uri(
-        scheme: 'sms',
-        path: phone,
-        queryParameters: {'body': message},
-      );
-      
+
+      // Eğer yukarıdaki blok çalışmazsa (yani izin verilmemişse) SMS uygulaması açılır
+      debugPrint('⚠️ Arka plan izni yok, manuel ekran açılıyor...');
+      final Uri smsUri = Uri(scheme: 'sms', path: phone, queryParameters: {'body': message});
       if (await canLaunchUrl(smsUri)) {
         await launchUrl(smsUri);
-        debugPrint('✅ SMS uygulaması açıldı');
         return true;
-      } else {
-        debugPrint('❌ SMS gönderilemedi');
-        return false;
       }
-      
+      return false;
     } catch (e) {
-      debugPrint('❌ SMS gönderme hatası: $e');
+      debugPrint('❌ SMS Hatası: $e');
       return false;
     }
   }

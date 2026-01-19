@@ -677,6 +677,15 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.4.0"
+  telephony:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: develop
+      resolved-ref: "908d9c0160a6e4a6ecc22ab8c66470a88a6fb3e8"
+      url: "https://github.com/shounakmulay/Telephony.git"
+    source: git
+    version: "0.2.0"
   term_glyph:
     dependency: transitive
     description:
